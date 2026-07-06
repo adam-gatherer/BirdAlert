@@ -1,0 +1,73 @@
+# Note files, just for local usage
+scratch.txt
+create_overview.py
+BirdAlert_overview.txt
+
+# --------------------------------------------------
+# Terraform
+# --------------------------------------------------
+
+# Local Terraform working directory
+**/.terraform/*
+
+# Terraform state
+*.tfstate
+*.tfstate.*
+
+# Crash logs
+crash.log
+crash.*.log
+
+# Variable files containing secrets
+*.auto.tfvars
+*.auto.tfvars.json
+terraform.tfvars
+terraform.tfvars.json
+
+# Override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Terraform CLI configuration
+.terraformrc
+terraform.rc
+
+# Terraform dependency lock file
+# Uncomment if you do NOT want to commit it.
+# For BirdAlert we WILL commit it.
+# .terraform.lock.hcl
+
+# --------------------------------------------------
+# Environment variables / secrets
+# --------------------------------------------------
+
+.env
+.env.*
+
+# --------------------------------------------------
+# Python
+# --------------------------------------------------
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# --------------------------------------------------
+# IDEs
+# --------------------------------------------------
+
+.vscode/
+.idea/
+
+# --------------------------------------------------
+# Operating system
+# --------------------------------------------------
+
+.DS_Store
+Thumbs.db
