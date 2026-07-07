@@ -2,6 +2,7 @@ terraform {
   required_version = "~> 1.14"
 
   backend "s3" {
+    # hardcoded - don't like this
     bucket       = "birdalert-terraform-state-3a602f"
     key          = "birdalert/dev/terraform.tfstate"
     region       = "eu-west-1"

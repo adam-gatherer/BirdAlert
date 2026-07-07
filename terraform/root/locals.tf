@@ -1,3 +1,4 @@
+# reusable names and tags save typing values every time
 locals {
   name_prefix = "${var.project_name}-${var.environment}"
 
