@@ -10,3 +10,18 @@ module "raw_bucket" {
 
   bucket_name = "${local.name_prefix}-raw"
 }
+
+# creates the poller lambda function using the zipped app.py in /build
+module "poller_lambda" {
+  source = "../modules/lambda"
+
+  function_name = "${local.name_prefix}-poller"
+
+  role_arn = module.poller_iam.role_arn
+
+  filename = "../../build/poller.zip"
+
+  handler = "app.lambda_handler"
+
+  runtime = "python3.13"
+}

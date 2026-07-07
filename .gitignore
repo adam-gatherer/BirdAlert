@@ -3,6 +3,9 @@ scratch.txt
 create_overview.py
 BirdAlert_overview.txt
 
+# Build artefacts
+build/
+
 # --------------------------------------------------
 # Terraform
 # --------------------------------------------------
