@@ -31,3 +31,17 @@ data "aws_iam_policy_document" "lambda_logging" {
     ]
   }
 }
+
+data "aws_iam_policy_document" "parameter_store" {
+  statement {
+    effect = "Allow"
+
+    actions = [
+      "ssm:GetParameter"
+    ]
+
+    resources = [
+      var.parameter_arn
+    ]
+  }
+}

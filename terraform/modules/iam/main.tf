@@ -13,3 +13,13 @@ resource "aws_iam_role_policy_attachment" "lambda_logging" {
   role       = aws_iam_role.lambda.name
   policy_arn = aws_iam_policy.lambda_logging.arn
 }
+
+resource "aws_iam_policy" "parameter_store" {
+  name   = "${var.role_name}-parameter-store"
+  policy = data.aws_iam_policy_document.parameter_store.json
+}
+
+resource "aws_iam_role_policy_attachment" "parameter_store" {
+  role       = aws_iam_role.lambda.name
+  policy_arn = aws_iam_policy.parameter_store.arn
+}

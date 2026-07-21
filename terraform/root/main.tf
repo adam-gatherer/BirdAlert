@@ -1,9 +1,3 @@
-# creates IAM role and policies required by poller lambda function
-module "poller_iam" {
-  source    = "../modules/iam"
-  role_name = "${local.name_prefix}-poller-role"
-}
-
 # creates the raw bucket for dumping API data
 module "raw_bucket" {
   source = "../modules/s3"
@@ -32,4 +26,14 @@ module "ebird_api_key" {
 
   parameter_name  = "/birdalert/${var.environment}/ebird/api-key"
   parameter_value = var.ebird_api_key
+}
+
+# creates IAM role and policies required by poller lambda function,
+# adds api key from parameter store
+module "poller_iam" {
+  source = "../modules/iam"
+
+  role_name = "${local.name_prefix}-poller-role"
+
+  parameter_arn = module.ebird_api_key.parameter_arn
 }
