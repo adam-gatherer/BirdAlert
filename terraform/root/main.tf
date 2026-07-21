@@ -25,3 +25,11 @@ module "poller_lambda" {
 
   runtime = "python3.13"
 }
+
+# creates the parameter store loaded with our API key
+module "ebird_api_key" {
+  source = "../modules/parameter-store"
+
+  parameter_name  = "/birdalert/${var.environment}/ebird/api-key"
+  parameter_value = var.ebird_api_key
+}

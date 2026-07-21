@@ -12,3 +12,9 @@ variable "project_name" {
   description = "Project name."
   type        = string
 }
+
+variable "ebird_api_key" {
+  description = "eBird API key."
+  type        = string
+  sensitive   = true
+}

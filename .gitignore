@@ -37,9 +37,10 @@ override.tf.json
 .terraformrc
 terraform.rc
 
+# Terraform secrets
+terraform/environments/secrets.auto.tfvars
+
 # Terraform dependency lock file
-# Uncomment if you do NOT want to commit it.
-# For BirdAlert we WILL commit it.
 # .terraform.lock.hcl
 
 # --------------------------------------------------
