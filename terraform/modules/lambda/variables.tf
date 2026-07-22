@@ -22,3 +22,8 @@ variable "runtime" {
   description = "Lambda runtime."
   type        = string
 }
+
+variable "bucket_name" {
+  description = "Raw S3 bucket."
+  type        = string
+}

@@ -18,6 +18,8 @@ module "poller_lambda" {
   handler = "app.lambda_handler"
 
   runtime = "python3.13"
+
+  bucket_name = module.raw_bucket.bucket_name
 }
 
 # creates the parameter store loaded with our API key
@@ -36,4 +38,6 @@ module "poller_iam" {
   role_name = "${local.name_prefix}-poller-role"
 
   parameter_arn = module.ebird_api_key.parameter_arn
+
+  bucket_arn = module.raw_bucket.bucket_arn
 }

@@ -45,3 +45,17 @@ data "aws_iam_policy_document" "parameter_store" {
     ]
   }
 }
+
+data "aws_iam_policy_document" "raw_bucket" {
+  statement {
+    effect = "Allow"
+
+    actions = [
+      "s3:PutObject"
+    ]
+
+    resources = [
+      "${var.bucket_arn}/*"
+    ]
+  }
+}

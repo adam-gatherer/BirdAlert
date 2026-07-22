@@ -1,10 +1,12 @@
 import json
 import os
+from datetime import datetime, UTC
 
 import boto3
 import requests
 
 ssm = boto3.client("ssm")
+s3 = boto3.client("s3")
 
 PARAMETER_NAME = "/birdalert/dev/ebird/api-key"
 
@@ -16,23 +18,35 @@ def lambda_handler(event, context):
         WithDecryption=True,
     )["Parameter"]["Value"]
 
-    headers = {
-        "X-eBirdApiToken": api_key,
-    }
-
     response = requests.get(
         "https://api.ebird.org/v2/data/obs/GB-ENG/recent/notable",
-        headers=headers,
+        headers={
+            "X-eBirdApiToken": api_key
+        },
         timeout=30,
     )
 
-    print(json.dumps(response.json(), indent=2))
+    response.raise_for_status()
+
+    data = response.json()
+
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+
+    filename = f"ebird/{timestamp}.json"
+
+    s3.put_object(
+        Bucket=os.environ["RAW_BUCKET"],
+        Key=filename,
+        Body=json.dumps(data),
+        ContentType="application/json",
+    )
 
     return {
-        "statusCode": response.status_code,
+        "statusCode": 200,
         "body": json.dumps(
             {
-                "records": len(response.json())
+                "records": len(data),
+                "object": filename,
             }
         ),
     }

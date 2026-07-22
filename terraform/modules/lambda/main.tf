@@ -11,4 +11,11 @@ resource "aws_lambda_function" "poller_function" {
 
   timeout     = 30
   memory_size = 256
+
+  environment {
+    variables = {
+      RAW_BUCKET = var.bucket_name
+    }
+  }
+
 }

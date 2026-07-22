@@ -23,3 +23,13 @@ resource "aws_iam_role_policy_attachment" "parameter_store" {
   role       = aws_iam_role.lambda.name
   policy_arn = aws_iam_policy.parameter_store.arn
 }
+
+resource "aws_iam_policy" "raw_bucket" {
+  name   = "${var.role_name}-raw-bucket"
+  policy = data.aws_iam_policy_document.raw_bucket.json
+}
+
+resource "aws_iam_role_policy_attachment" "raw_bucket" {
+  role       = aws_iam_role.lambda.name
+  policy_arn = aws_iam_policy.raw_bucket.arn
+}
