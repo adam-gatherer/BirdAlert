@@ -25,10 +25,11 @@ Do not assume the current code implements the Bible. The Bible describes the int
 - Read the relevant documentation before making architectural or cross-cutting changes.
 - Treat the Bible as the authoritative specification for product scope and intended architecture.
 - Do not silently change architectural decisions or requirements.
-- If an implementation decision is ambiguous or conflicts with the Bible, stop and ask the human rather than inventing a requirement.
+- If a decision materially affects requirements, data contracts, security, infrastructure architecture, or externally visible behaviour, stop and ask the human.
+- For routine, reversible, low-impact implementation choices that fit existing patterns, proceed without unnecessarily stopping for approval.
 - Prefer small, coherent, reviewable changes.
 - Do not implement future roadmap items merely because they are described in the Bible.
-- Do not add Phase 2 functionality while completing Phase 1 unless explicitly instructed.
+- Do not implement Phase 2 functionality while completing Phase 1 unless explicitly instructed.
 - Preserve the serverless-first, modular, observable, low-operational-cost design.
 - Terraform is the source of truth for AWS infrastructure.
 - Keep IAM least-privilege.
@@ -47,41 +48,65 @@ Do not assume the current code implements the Bible. The Bible describes the int
 
 Before changing files:
 
-1. Inspect the relevant existing implementation.
+1. Read the relevant documentation and implementation.
 2. Identify the applicable requirement(s).
-3. State the intended change and affected files.
+3. Determine the smallest coherent change.
 4. Check for security and infrastructure implications.
-5. Make the smallest change that satisfies the requirement.
+5. State the intended change and affected files in the agent response.
 
-After changing files:
+The plan is normally an explanation of the intended work, not a request for approval. Proceed after stating the plan unless the change falls under the explicit approval boundaries below.
 
-1. Run relevant tests.
-2. Run relevant formatting/linting/type/static checks where available.
-3. Validate Terraform when Terraform changes are made.
-4. Review the diff for accidental changes, secrets, and unrelated edits.
-5. Report what changed, what was tested, and anything unresolved.
+## Approval boundaries
 
-## AWS and Terraform
+The agent may proceed without additional approval for routine local development work and safe, reversible changes that satisfy an already-defined requirement.
+
+The agent must ask the human before:
+
+- changing product requirements;
+- materially changing the architecture;
+- changing an externally visible API or data contract when the required behaviour is not already defined;
+- introducing a major new framework, AWS service, or dependency when the need is not already established;
+- deploying to production;
+- performing destructive AWS operations;
+- running `terraform apply`;
+- running `terraform destroy`;
+- changing or rewriting Git history;
+- committing or pushing Git changes;
+- rotating, revoking, or replacing credentials.
+
+## Terraform and AWS
 
 - Do not assume an AWS resource exists merely because Terraform defines it.
 - Do not claim successful deployment or live AWS state without actually verifying it.
-- Do not run destructive AWS or Terraform commands without explicit approval.
-- Be especially careful with `terraform destroy`, state operations, resource replacement, and production resources.
+- Read-only AWS inspection is permitted when necessary to answer a task, provided it does not mutate resources.
+- `terraform plan` may be run for an explicitly authorised Terraform development task because it is a planning/read operation, but the agent must clearly report that it may contact the configured Terraform backend and AWS APIs.
+- The agent must inspect the resulting plan and report any unexpected resource creation, destruction, replacement, or other significant change.
+- `terraform apply`, `terraform destroy`, and other mutating infrastructure operations require explicit human approval.
+- Be especially careful with state operations, resource replacement, and production resources.
 - Keep environment-specific configuration explicit.
 - Do not hard-code environment-specific values into application code when Terraform/configuration can supply them.
 
-## Secrets
+## Secrets and local files
 
-Never place API keys, passwords, tokens, credentials, or other secrets in source files.
+Never place credentials, API keys, passwords, tokens, or other secrets in source files.
 
 Secret-bearing local files such as `*.auto.tfvars` are intentionally ignored by Git. Do not remove those ignore rules merely to make an agent workflow easier.
 
-If a secret is discovered in source or tracked history:
+Ignored or untracked files are still sensitive. The agent must:
+
+- never reproduce secret values in responses;
+- never copy secrets into source code, documentation, tests, logs, generated files, or commits;
+- avoid unnecessarily reading secret-bearing files;
+- if a secret is discovered, report only that a secret was found, without displaying its value.
+
+If a secret is discovered in source code or tracked Git history:
 
 - stop using it;
 - tell the human it should be considered compromised;
-- do not reproduce the secret in output;
+- do not reproduce the secret;
 - recommend rotation/remediation.
+
+If a credential is discovered only in an ignored or untracked local file, do not treat that fact alone as evidence that it was committed or publicly exposed. Still avoid reproducing it and recommend removing stale credentials and rotating any credential that has otherwise been exposed.
 
 ## Scope
 
@@ -95,18 +120,29 @@ Analytics, AI, mobile applications, advanced administration, social features, an
 
 ## Agent autonomy
 
-The agent may inspect files, propose plans, implement approved work, run safe local tests, and report results.
+The agent may:
+
+- inspect repository files;
+- inspect safe local configuration;
+- propose implementation plans;
+- implement approved requirements;
+- make routine reversible implementation choices;
+- run safe local tests and validation;
+- run read-only AWS inspection when useful;
+- run `terraform plan` for an explicitly authorised Terraform development task;
+- review its own changes;
+- report results.
 
 The agent should not independently:
 
 - redefine requirements;
 - expand project scope;
 - deploy to production;
-- destroy infrastructure;
-- rotate credentials;
+- apply or destroy Terraform infrastructure;
 - rewrite Git history;
+- rotate credentials;
 - commit or push changes;
-- introduce a new major framework or AWS service without explaining why it is required.
+- introduce major architecture changes without human involvement.
 
 When a meaningful architectural choice is required, ask the human.
 
@@ -120,5 +156,10 @@ A completed task should have:
 - appropriate tests or verification;
 - no newly introduced secrets;
 - documentation updated where necessary;
-- a clean review of the resulting diff;
-- a concise report of changes, tests, and remaining issues.
+- a clean review of the diff;
+- a concise report of:
+  - files changed;
+  - what changed;
+  - tests/checks run;
+  - infrastructure changes planned, if applicable;
+  - anything unresolved.
