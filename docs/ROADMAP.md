@@ -2,238 +2,72 @@
 
 ## Current target
 
-Complete Phase 1.
+Complete Phase 1: a UK single-application product with 15-minute ingestion, unique processed sightings, a read API, and a simple public homepage. Phase 2 adds authenticated users and personalised email alerts.
 
-The Bible's roadmap is:
-
-1. Terraform foundation
-2. Ingestion pipeline
-3. Validation and transformation
-4. Read API
-5. Basic frontend
-6. Cognito
-7. Watchlists
-8. Alert engine
-
-The Bible's explicit Phase 1 scope is the ingestion and read API pipeline. The frontend appears in the roadmap as Sprint 5, so its status as a Phase 1 completion criterion should be confirmed before implementation.
+The Bible's roadmap places the basic frontend at Sprint 5. It is included in the agreed Phase 1 product.
 
 ## Current repository state
 
-Completed or substantially implemented:
+Implemented in code/configuration: poller Lambda, eBird API request, SSM lookup, raw S3 write, supporting IAM and Terraform modules, and Terraform remote-state bootstrap.
 
-- Terraform foundation
-- poller Lambda
-- eBird API integration
-- SSM Parameter Store integration
-- raw S3 storage
-- supporting IAM
-- Terraform remote-state bootstrap
-
-Not yet implemented:
-
-- EventBridge 15-minute schedule
-- configurable multi-region polling
-- region-based raw storage keys
-- validation
-- transformation
-- deduplication
-- idempotent processing
-- DynamoDB processed storage
-- read-only API
-- API Gateway
-- structured logging
-- explicit retry/failure handling
-- tests
-- basic frontend
-
-## Proposed implementation sequence
-
-These milestones are an implementation sequence derived from the current gap analysis.
-
----
+Not implemented: EventBridge heartbeat, region configuration, raw S3 lifecycle, current-window extraction, validation, transformation, deduplication, DynamoDB master database, read API, homepage, structured logging, explicit retry/failure handling, or tests.
 
 ## Milestone 1 - Configuration-driven polling
 
-### Objective
+Remove hard-coded region and environment assumptions from the poller.
 
-Remove the current poller's hard-coded environment and region assumptions so that the ingestion Lambda can safely poll one or more configured eBird regions while preserving every successful raw API response.
+- Configure one or more valid eBird region codes through Terraform/application configuration. The deployer supplies deployment-specific values; do not invent a definitive region list. Development may continue to use `GB-ENG`.
+- Supply the environment-specific SSM parameter name through configuration.
+- Pass runtime configuration to Lambda through environment variables unless an established project pattern is clearly better.
+- Keep production infrastructure out of scope.
+- Poll each configured region and associate each response with its source region.
+- Use a region-based S3 prefix and a collision-resistant key that identifies region and ingestion event.
+- Store the complete successful raw JSON response. Surface HTTP, network, invalid JSON, and S3 write failures; do not report a region as successful if its operation failed.
+- Do not add record validation, transformation, deduplication, scheduling, or complex retries in this milestone.
 
-### Configuration decisions
+Acceptance: configuration supports one and multiple regions; dev continues to use `GB-ENG`; parameter path is not hard-coded; raw keys are region-prefixed and cannot collide within one second; successful responses are stored completely; failures are visible; focused tests cover configuration and key generation; Terraform is formatted/validated; docs describe the interface; no unrelated changes or secrets are introduced.
 
-For Milestone 1:
+## Milestone 2 - 15-minute heartbeat and raw retention
 
-- The list of eBird regions should be supplied through Terraform/application configuration rather than hard-coded in Python.
-- The environment-specific SSM parameter path should be supplied through configuration rather than hard-coded in Python.
-- Terraform should remain responsible for environment-specific values.
-- The Lambda should receive its runtime configuration through environment variables unless an existing project pattern provides a clearly better mechanism.
-- The initial development environment remains `dev`.
-- Existing production infrastructure should not be modified or deployed as part of this milestone.
+- Add the EventBridge 15-minute heartbeat and Lambda invocation permission.
+- Preserve the previous-24-hour eBird dump in the single raw S3 bucket with region prefixes.
+- Add configurable S3 lifecycle expiry. Approximately 12 hours is the current intended retention, not an immutable architecture constraint.
+- Verify behavior without deploying or modifying production infrastructure.
 
-The exact configuration variable names may be chosen by the implementer if they are clear, consistent, and documented.
+## Milestone 3 - Processing window and validation
 
-### Region handling
+- Extract only sightings relevant to the current 15-minute processing window from the 24-hour response.
+- Define the minimum internal sighting fields: species, sighting timestamp, and location.
+- Validate external records and reject invalid records from the internal model.
+- Keep full raw payloads in S3; do not copy the whole response into the master database.
+- Add focused tests for window selection, boundaries, and invalid records.
 
-The poller should:
+## Milestone 4 - Deduplication and master database
 
-- accept one or more configured eBird region identifiers;
-- make one eBird request per configured region;
-- associate each response with the region that produced it;
-- avoid hard-coding `GB-ENG` in application code.
+- Define how sightings are identified as unique and make processing idempotent.
+- Add the DynamoDB master database and persist only unique, valid processed sightings.
+- Grant least-privilege access and test persistence/deduplication behavior.
 
-For the current development configuration, preserve the existing `GB-ENG` behaviour by configuring it as the initial region.
+## Milestone 5 - Read API
 
-The region identifier used by eBird should also be used consistently as the region component of the S3 key unless an implementation constraint requires another documented mapping.
+- Add API Gateway and a Lambda read function.
+- Provide recent sightings, species lookup, region lookup, and health endpoints; support retrieval by region, species, and date.
+- The latest-sightings request queries the master database and returns the 10 most recent records.
+- Decide the DynamoDB key/index access pattern needed for that query during this milestone. Do not add a cache solely for the latest 10.
+- Add focused API tests.
 
-### SSM parameter handling
+## Milestone 6 - Public homepage
 
-The poller should not contain: `/birdalert/dev/...` or any other environment-specific parameter path.
-
-Terraform should provide the appropriate parameter name/path for the environment.
-
-The application should read the configured parameter name at runtime and continue to use `WithDecryption=True`.
-
-### S3 raw object layout
-
-Raw responses should use a region-based prefix.
-
-The target layout is conceptually: `<region>/<timestamp-or-unique-id>.json`
-
-
-For example: `GB-ENG/20260929T103000Z-<unique-id>.json`
-
-
-The exact unique suffix may be chosen by the implementer.
-
-The object-key scheme must ensure that two successful writes cannot overwrite each other merely because they occur within the same second.
-
-The key should contain enough information to identify the source region and the ingestion event.
-
-### Raw response preservation
-
-For every successful eBird API response:
-
-* attempt to write the complete raw JSON response to S3;
-* do not silently discard successful responses;
-* do not overwrite a previous raw response because of key collision;
-* report S3 write failures as failures rather than claiming successful ingestion.
-
-HTTP error responses are not successful raw observations and do not need to be stored as successful ingestion records for this milestone.
-
-If the API returns a successful HTTP response that cannot be parsed as JSON, the Lambda must fail rather than silently treating the response as valid JSON.
-
-Validation of individual observation records belongs to a later milestone.
-
-### Error behaviour
-
-For Milestone 1:
-
-* HTTP errors from eBird should cause the relevant polling operation to fail visibly.
-* Request timeouts and connection failures should fail visibly.
-* Invalid JSON from a successful response should fail visibly.
-* S3 write failures should fail visibly.
-* Do not introduce a complex retry framework unless required by the existing Lambda/AWS behaviour or explicitly requested.
-* Do not add validation/transformation/deduplication logic yet; those belong to later milestones.
-
-For multiple configured regions, a failure in one region must not silently be reported as though all configured regions succeeded.
-
-The implementation should make the success/failure status of each region clear in its result/logging.
-
-### Testing and acceptance criteria
-
-Milestone 1 is complete when:
-
-* [ ] `GB-ENG` is no longer hard-coded as the only polling region.
-* [ ] The region list is supplied through configuration.
-* [ ] The SSM parameter path is supplied through configuration.
-* [ ] The existing dev configuration continues to poll `GB-ENG`.
-* [ ] Multiple configured regions result in separate eBird requests.
-* [ ] Raw objects use region-based S3 prefixes.
-* [ ] Two writes in the same second cannot overwrite one another because of the object-key design.
-* [ ] Successful raw API responses are stored completely.
-* [ ] HTTP failures are surfaced as failures.
-* [ ] request/network failures are surfaced as failures.
-* [ ] invalid JSON is surfaced as a failure.
-* [ ] S3 write failures are surfaced as failures.
-* [ ] No credentials or API keys are added to source code.
-* [ ] Focused tests cover the new configuration and key-generation behaviour.
-* [ ] Terraform configuration is formatted and validated.
-* [ ] The resulting diff contains no unrelated changes.
-* [ ] Documentation reflects the final configuration interface.
-
-### Explicitly out of scope
-
-Do not implement the following as part of Milestone 1:
-
-* EventBridge scheduling
-* validation of individual bird records
-* transformation to the internal schema
-* deduplication
-* DynamoDB
-* API Gateway
-* frontend
-* Cognito
-* watchlists
-* SNS alerts
-* complex retry systems
-* production deployment
-
----
-
-## Milestone 2 - EventBridge scheduling
-
-* add a 15-minute EventBridge schedule;
-* connect it to the poller;
-* add Lambda invocation permission;
-* verify the schedule safely.
-
-## Milestone 3 - Validation and internal model
-
-* define the required internal record shape;
-* validate incoming eBird records;
-* reject invalid records;
-* add focused tests.
-
-## Milestone 4 - Transformation and deduplication
-
-* transform valid eBird observations;
-* define the uniqueness/idempotency mechanism;
-* ensure repeated processing does not create duplicate processed observations;
-* add tests.
-
-## Milestone 5 - DynamoDB
-
-* define the DynamoDB table and query model;
-* store processed observations;
-* provide least-privilege write access;
-* test the persistence path.
-
-## Milestone 6 - Read API
-
-* implement API Gateway;
-* add recent sightings;
-* add species lookup;
-* add region lookup;
-* add health status;
-* design DynamoDB indexes around the actual query requirements.
+- Build a simple homepage that requests the read API and displays the 10 most recent sightings with species, location, and timestamp.
+- Do not add authentication, sessions, cookies, or persistent application caching for the public Phase 1 homepage.
+- A 15-minute frontend refresh is optional; backend behavior must not depend on a cached homepage copy.
 
 ## Milestone 7 - Operational hardening
 
-* structured logging;
-* deliberate failure/retry behaviour;
-* broader integration verification;
-* environment/deployment review.
+- Add structured logging and deliberate failure/retry behavior.
+- Review IAM, encryption, raw retention, environment configuration, and deployment procedure.
+- Run relevant local tests and safe validation; report live AWS state only if actually checked.
 
-## Milestone 8 - Frontend decision
+## Phase 2 - Users and personalised alerts
 
-Confirm whether the Bible's Sprint 5 basic frontend is required for the Phase 1 completion target before implementing it.
-
-## Phase 2
-
-After Phase 1:
-
-* Cognito authentication
-* watchlists
-* notification matching
-* SNS email alerts
-
-Do not implement Phase 2 merely because these items are documented.
+After Phase 1, implement Cognito authentication (email as username), species/region watchlists, user email/location/updatable radius in miles, matching of newly processed sightings against that radius, and SNS email alerts. Decide location representation, geolocation, distance calculation, and Cognito schema during Phase 2 design. Do not build these features into Phase 1.

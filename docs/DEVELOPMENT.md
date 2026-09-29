@@ -6,6 +6,8 @@ BirdAlert is being developed incrementally against the roadmap in `docs/ROADMAP.
 
 The AI agent is an implementation assistant, not the owner of the architecture. Human approval is expected for material architectural decisions.
 
+BirdAlert is one public UK application, not a generic multi-tenant platform. Keep deployment-specific values separate from configuration mechanisms: code and Terraform define how values are supplied; the deployer supplies actual deployment values. Do not invent a definitive eBird region list or add API documentation to this repository. Development may use the existing `GB-ENG` region.
+
 ## Standard agent workflow
 
 For each task:
@@ -30,11 +32,13 @@ For each task:
 
 For Terraform work, use the normal Terraform validation workflow appropriate to the affected directory.
 
-At minimum, review:
+For an explicitly authorised Terraform development task, review:
 
 - formatting;
 - configuration validity;
 - planned resource changes.
+
+`terraform plan` may contact the configured backend and AWS APIs. Follow `AGENTS.md` for when it is appropriate and report this side effect and any unexpected resource changes. Do not apply infrastructure without the required explicit approval.
 
 Do not apply destructive or production changes without explicit human approval.
 
