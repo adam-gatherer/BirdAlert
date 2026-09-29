@@ -12,7 +12,7 @@ The system shall:
 2. Support one or more valid eBird region codes supplied as deployment configuration. Development may configure `GB-ENG`; the repository must not invent a definitive deployment region list.
 3. Retrieve the eBird previous-24-hour response for each configured region.
 4. Store each complete raw response in one S3 bucket using region-based prefixes.
-5. Apply lifecycle expiry to raw dumps. Approximately 12 hours is the current intended retention, configurable rather than an immutable architecture requirement.
+5. Apply lifecycle expiry to raw dumps. One day is the current configured retention, configurable rather than an immutable architecture requirement.
 6. Extract only sightings relevant to the current 15-minute processing window; do not copy the full 24-hour response to the master database.
 7. Validate external records and reject invalid records from the internal model.
 8. Transform valid records into an internal model and deduplicate them so the master database contains only unique sightings.
@@ -57,4 +57,4 @@ Multi-tenancy, analytics, AI product features, mobile applications, advanced adm
 
 ## Current implementation status
 
-The repository currently has a poller Lambda with Terraform-supplied region and SSM configuration, region-prefixed raw S3 writes, supporting Terraform modules, and focused poller tests. It does not yet implement the heartbeat, lifecycle expiry, current-window extraction, validation, transformation, deduplication, DynamoDB, read API, or homepage. These are status observations, not reductions to the requirements.
+The repository currently has a poller Lambda with Terraform-supplied region and SSM configuration, a 15-minute EventBridge heartbeat, one-day raw S3 lifecycle expiry, region-prefixed raw S3 writes, supporting Terraform modules, and focused poller tests. It does not yet implement current-window extraction, validation, transformation, deduplication, DynamoDB, read API, or homepage. These are status observations, not reductions to the requirements.

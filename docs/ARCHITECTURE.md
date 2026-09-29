@@ -14,7 +14,7 @@ BirdAlert is one public web application for UK sightings, not a generic multi-te
 EventBridge (15-minute heartbeat)
     -> Poll Lambda
     -> eBird API (previous 24 hours)
-    -> S3 raw dump (region prefix; intended ~12-hour lifecycle)
+    -> S3 raw dump (region prefix; one-day lifecycle)
     -> extract current 15-minute slice
     -> validate / process / deduplicate
     -> DynamoDB master database (unique sightings)
@@ -31,7 +31,7 @@ The database key/index pattern for the latest-10 query is an implementation deci
 
 ## Storage and operations
 
-Use one S3 raw bucket with region-based prefixes. Configure lifecycle expiry for raw dumps; approximately 12 hours is the current intended retention, not an immutable constraint. DynamoDB is the master database. Terraform provisions the infrastructure.
+Use one S3 raw bucket with region-based prefixes. Configure lifecycle expiry for raw dumps; one day is the current configured retention, not an immutable constraint. DynamoDB is the master database. Terraform provisions the infrastructure.
 
 Use least-privilege IAM, Parameter Store for secrets/configuration, encryption where appropriate, input validation, structured logging, and observable, idempotent processing. Keep the design serverless, modular, and cost-conscious.
 
@@ -52,13 +52,14 @@ Implemented in repository configuration/code:
 - Poll Lambda calling eBird and writing raw JSON to S3.
 - Configurable comma-separated region codes and SSM parameter name supplied to Lambda by Terraform.
 - Region-based, collision-resistant raw S3 object keys and visible per-region poll failures.
+- EventBridge invokes the poller every 15 minutes, with scoped Lambda permission.
+- Raw S3 objects and non-current versions expire after the configured one-day retention period.
 - SSM Parameter Store lookup and Terraform modules for Lambda, IAM, parameter, and S3.
 - Terraform bootstrap code for a remote-state bucket.
 - Raw bucket versioning, encryption, and public-access blocking.
 
 Not implemented in the active configuration/code:
 
-- EventBridge schedule or raw-data lifecycle expiry.
 - Current-15-minute extraction, validation, transformation, or deduplication.
 - DynamoDB master database or processing function.
 - Read API, API Gateway, latest-10 homepage, or frontend.

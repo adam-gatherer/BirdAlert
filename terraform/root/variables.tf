@@ -28,6 +28,16 @@ variable "ebird_regions" {
   }
 }
 
+variable "raw_retention_days" {
+  description = "Number of days to retain raw S3 object versions."
+  type        = number
+
+  validation {
+    condition     = var.raw_retention_days >= 1 && floor(var.raw_retention_days) == var.raw_retention_days
+    error_message = "raw_retention_days must be a whole number of at least one day."
+  }
+}
+
 variable "ebird_api_key" {
   description = "eBird API key."
   type        = string

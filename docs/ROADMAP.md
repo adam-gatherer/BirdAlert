@@ -10,7 +10,7 @@ The Bible's roadmap places the basic frontend at Sprint 5. It is included in the
 
 Implemented in repository code/configuration: Milestone 1 configuration-driven polling, poller Lambda, eBird API request, SSM lookup, raw S3 write, supporting IAM and Terraform modules, and Terraform remote-state bootstrap. This does not confirm deployment to AWS.
 
-Not implemented: EventBridge heartbeat, raw S3 lifecycle, current-window extraction, validation, transformation, deduplication, DynamoDB master database, read API, homepage, structured logging, or explicit retry/failure handling.
+Not implemented: current-window extraction, validation, transformation, deduplication, DynamoDB master database, read API, homepage, structured logging, or explicit retry/failure handling.
 
 The poller configuration interface is `EBIRD_REGIONS` (comma-separated region codes), `PARAMETER_NAME` (environment-specific SSM parameter name), and `RAW_BUCKET`. Terraform supplies these Lambda environment variables. `terraform/environments/dev.tfvars` configures `GB-ENG`; deployment-specific region values remain the deployer's responsibility.
 
@@ -29,11 +29,11 @@ Remove hard-coded region and environment assumptions from the poller.
 
 Acceptance: configuration supports one and multiple regions; dev continues to use `GB-ENG`; parameter path is not hard-coded; raw keys are region-prefixed and cannot collide within one second; successful responses are stored completely; failures are visible; focused tests cover configuration and key generation; Terraform is formatted/validated; docs describe the interface; no unrelated changes or secrets are introduced.
 
-## Milestone 2 - 15-minute heartbeat and raw retention
+## Milestone 2 - 15-minute heartbeat and raw retention (implemented in repository; not deployed)
 
 - Add the EventBridge 15-minute heartbeat and Lambda invocation permission.
 - Preserve the previous-24-hour eBird dump in the single raw S3 bucket with region prefixes.
-- Add configurable S3 lifecycle expiry. Approximately 12 hours is the current intended retention, not an immutable architecture constraint.
+- Add configurable S3 lifecycle expiry. One day is the current configured retention, not an immutable architecture constraint.
 - Verify behavior without deploying or modifying production infrastructure.
 
 ## Milestone 3 - Processing window and validation

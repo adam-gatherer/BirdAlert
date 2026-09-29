@@ -16,7 +16,7 @@ Implement the complete ingestion, read API, and simple homepage:
 
 - A 15-minute heartbeat polls configured eBird regions. Deployment configuration supplies one or more valid eBird region codes; development may use `GB-ENG`. Do not assume or embed a definitive deployment region list.
 - eBird provides the previous 24 hours of UK sightings. Each poll stores the complete raw response in one S3 bucket, under a region-based prefix.
-- S3 is the raw landing area. The current intended lifecycle retention is approximately 12 hours; this is a deployment/configuration choice, not an immutable architecture constraint.
+- S3 is the raw landing area. The current lifecycle configuration retains raw data for one day; this remains a deployment/configuration choice, not an immutable architecture constraint.
 - Processing extracts sightings relevant to the current 15-minute processing window from the 24-hour response. It must not copy the entire response into the master database.
 - Validate and process records, reject invalid data, and deduplicate so the master database contains only unique sightings.
 - Store the application fields needed for sightings, including at minimum bird/species, sighting timestamp, and sighting location. Keep the full raw payload in S3 rather than duplicating it unnecessarily in the master database.
@@ -34,7 +34,7 @@ The exact processor invocation mechanism and database access pattern are impleme
 
 Use EventBridge, Lambda, S3, DynamoDB, API Gateway, IAM, CloudWatch, Parameter Store, and Terraform. DynamoDB is the intended master database and should be designed for application queries. The exact key/index pattern for efficiently returning the latest 10 sightings is an implementation concern for the API milestone, not a product requirement to invent here.
 
-The S3 lifecycle should expire old raw dumps. The intended retention is approximately 12 hours, subject to deployment configuration.
+The S3 lifecycle should expire old raw dumps. The current configured retention is one day, subject to deployment configuration.
 
 ## Phase 1 web application
 

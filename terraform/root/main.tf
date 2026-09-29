@@ -2,7 +2,8 @@
 module "raw_bucket" {
   source = "../modules/s3"
 
-  bucket_name = "${local.name_prefix}-raw"
+  bucket_name    = "${local.name_prefix}-raw"
+  retention_days = var.raw_retention_days
 }
 
 # creates the poller lambda function using the zipped app.py in /build
@@ -42,4 +43,13 @@ module "poller_iam" {
   parameter_arn = module.ebird_api_key.parameter_arn
 
   bucket_arn = module.raw_bucket.bucket_arn
+}
+
+module "poller_schedule" {
+  source = "../modules/eventbridge"
+
+  rule_name            = "${local.name_prefix}-poller-schedule"
+  schedule_expression  = "rate(15 minutes)"
+  lambda_function_arn  = module.poller_lambda.function_arn
+  lambda_function_name = module.poller_lambda.function_name
 }

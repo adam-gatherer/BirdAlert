@@ -32,3 +32,22 @@ resource "aws_s3_bucket_public_access_block" "raw" {
   block_public_policy     = true
   restrict_public_buckets = true
 }
+
+resource "aws_s3_bucket_lifecycle_configuration" "raw" {
+  bucket = aws_s3_bucket.raw.id
+
+  rule {
+    id     = "expire-raw-responses"
+    status = "Enabled"
+
+    filter {}
+
+    expiration {
+      days = var.retention_days
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = var.retention_days
+    }
+  }
+}
