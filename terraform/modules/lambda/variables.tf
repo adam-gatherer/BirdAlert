@@ -27,3 +27,13 @@ variable "bucket_name" {
   description = "Raw S3 bucket."
   type        = string
 }
+
+variable "parameter_name" {
+  description = "SSM parameter name containing the eBird API key."
+  type        = string
+}
+
+variable "ebird_regions" {
+  description = "eBird region codes configured for this deployment."
+  type        = list(string)
+}

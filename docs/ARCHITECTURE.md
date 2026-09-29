@@ -50,23 +50,24 @@ The active implementation is substantially earlier than the intended Phase 1 arc
 Implemented in repository configuration/code:
 
 - Poll Lambda calling eBird and writing raw JSON to S3.
+- Configurable comma-separated region codes and SSM parameter name supplied to Lambda by Terraform.
+- Region-based, collision-resistant raw S3 object keys and visible per-region poll failures.
 - SSM Parameter Store lookup and Terraform modules for Lambda, IAM, parameter, and S3.
 - Terraform bootstrap code for a remote-state bucket.
 - Raw bucket versioning, encryption, and public-access blocking.
 
 Not implemented in the active configuration/code:
 
-- EventBridge schedule, configurable region list, or raw-data lifecycle expiry.
+- EventBridge schedule or raw-data lifecycle expiry.
 - Current-15-minute extraction, validation, transformation, or deduplication.
 - DynamoDB master database or processing function.
 - Read API, API Gateway, latest-10 homepage, or frontend.
-- Tests.
 
-The repository has empty placeholder areas for API, transformer, validation, and tests.
+Focused tests now cover the poller configuration and failure/key behavior. The repository still has empty placeholder areas for API, transformer, and validation.
 
 ## Known mismatches
 
-- The poller hard-codes `GB-ENG`, a dev-only SSM path, and the generic `ebird/` S3 prefix.
+- The dev tfvars configures `GB-ENG`; deployment region values are not hard-coded in application code.
 - The root Terraform backend has a fixed dev state key despite dev and prod variable files.
 - The README describes capabilities that are not yet implemented.
 

@@ -8,11 +8,13 @@ The Bible's roadmap places the basic frontend at Sprint 5. It is included in the
 
 ## Current repository state
 
-Implemented in code/configuration: poller Lambda, eBird API request, SSM lookup, raw S3 write, supporting IAM and Terraform modules, and Terraform remote-state bootstrap.
+Implemented in repository code/configuration: Milestone 1 configuration-driven polling, poller Lambda, eBird API request, SSM lookup, raw S3 write, supporting IAM and Terraform modules, and Terraform remote-state bootstrap. This does not confirm deployment to AWS.
 
-Not implemented: EventBridge heartbeat, region configuration, raw S3 lifecycle, current-window extraction, validation, transformation, deduplication, DynamoDB master database, read API, homepage, structured logging, explicit retry/failure handling, or tests.
+Not implemented: EventBridge heartbeat, raw S3 lifecycle, current-window extraction, validation, transformation, deduplication, DynamoDB master database, read API, homepage, structured logging, or explicit retry/failure handling.
 
-## Milestone 1 - Configuration-driven polling
+The poller configuration interface is `EBIRD_REGIONS` (comma-separated region codes), `PARAMETER_NAME` (environment-specific SSM parameter name), and `RAW_BUCKET`. Terraform supplies these Lambda environment variables. `terraform/environments/dev.tfvars` configures `GB-ENG`; deployment-specific region values remain the deployer's responsibility.
+
+## Milestone 1 - Configuration-driven polling (implemented in repository; not deployed)
 
 Remove hard-coded region and environment assumptions from the poller.
 

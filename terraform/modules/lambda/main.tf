@@ -14,7 +14,9 @@ resource "aws_lambda_function" "poller_function" {
 
   environment {
     variables = {
-      RAW_BUCKET = var.bucket_name
+      RAW_BUCKET     = var.bucket_name
+      PARAMETER_NAME = var.parameter_name
+      EBIRD_REGIONS  = join(",", var.ebird_regions)
     }
   }
 

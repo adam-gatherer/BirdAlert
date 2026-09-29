@@ -57,4 +57,4 @@ Multi-tenancy, analytics, AI product features, mobile applications, advanced adm
 
 ## Current implementation status
 
-The repository currently has a poller Lambda, eBird request, SSM lookup, raw S3 writes, and supporting Terraform modules. It does not yet implement the heartbeat, region configuration, lifecycle expiry, current-window extraction, validation, transformation, deduplication, DynamoDB, read API, homepage, or tests. These are status observations, not reductions to the requirements.
+The repository currently has a poller Lambda with Terraform-supplied region and SSM configuration, region-prefixed raw S3 writes, supporting Terraform modules, and focused poller tests. It does not yet implement the heartbeat, lifecycle expiry, current-window extraction, validation, transformation, deduplication, DynamoDB, read API, or homepage. These are status observations, not reductions to the requirements.

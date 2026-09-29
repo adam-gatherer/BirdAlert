@@ -19,7 +19,9 @@ module "poller_lambda" {
 
   runtime = "python3.13"
 
-  bucket_name = module.raw_bucket.bucket_name
+  bucket_name    = module.raw_bucket.bucket_name
+  parameter_name = module.ebird_api_key.parameter_name
+  ebird_regions  = var.ebird_regions
 }
 
 # creates the parameter store loaded with our API key
