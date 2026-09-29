@@ -86,13 +86,7 @@ The region identifier used by eBird should also be used consistently as the regi
 
 ### SSM parameter handling
 
-The poller should not contain:
-
-
-/birdalert/dev/...
-
-
-or any other environment-specific parameter path.
+The poller should not contain: `/birdalert/dev/...` or any other environment-specific parameter path.
 
 Terraform should provide the appropriate parameter name/path for the environment.
 
@@ -102,15 +96,10 @@ The application should read the configured parameter name at runtime and continu
 
 Raw responses should use a region-based prefix.
 
-The target layout is conceptually:
+The target layout is conceptually: `<region>/<timestamp-or-unique-id>.json`
 
 
-
-
-For example:
-
-
-GB-ENG/20260929T103000Z-<unique-id>.json
+For example: `GB-ENG/20260929T103000Z-<unique-id>.json`
 
 
 The exact unique suffix may be chosen by the implementer.
