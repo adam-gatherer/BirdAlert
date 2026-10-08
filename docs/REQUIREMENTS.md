@@ -57,4 +57,4 @@ Multi-tenancy, analytics, AI product features, mobile applications, advanced adm
 
 ## Current implementation status
 
-The repository currently has a poller Lambda with Terraform-supplied region and SSM configuration, a 15-minute EventBridge heartbeat, one-day raw S3 lifecycle expiry, region-prefixed raw S3 writes, supporting Terraform modules, and focused poller tests. It does not yet implement current-window extraction, validation, transformation, deduplication, DynamoDB, read API, or homepage. These are status observations, not reductions to the requirements.
+The repository currently has a poller Lambda with Terraform-supplied region and SSM configuration, a 15-minute EventBridge heartbeat, one-day raw S3 lifecycle expiry, region-prefixed raw S3 writes, and an S3-triggered processor Lambda. The processor extracts the previous 15-minute window, validates external records, and transforms accepted sightings into the internal model; it does not persist them. Deduplication/idempotency, DynamoDB, read API, and homepage remain unimplemented. These are status observations, not reductions to the requirements.

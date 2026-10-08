@@ -8,9 +8,9 @@ The Bible's roadmap places the basic frontend at Sprint 5. It is included in the
 
 ## Current repository state
 
-Implemented in repository code/configuration: Milestone 1 configuration-driven polling, poller Lambda, eBird API request, SSM lookup, raw S3 write, supporting IAM and Terraform modules, and Terraform remote-state bootstrap. This does not confirm deployment to AWS.
+Implemented in repository code/configuration: Milestone 1 configuration-driven polling, poller Lambda, eBird API request, SSM lookup, raw S3 write, supporting IAM and Terraform modules, Terraform remote-state bootstrap, and Milestone 2 scheduling/retention. Milestone 3 now has S3-triggered processing, previous-15-minute window extraction, validation, and transformation; processed records are not yet persisted. This does not confirm deployment to AWS.
 
-Not implemented: current-window extraction, validation, transformation, deduplication, DynamoDB master database, read API, homepage, structured logging, or explicit retry/failure handling.
+Not implemented: deduplication/idempotency, DynamoDB master database, read API, homepage, structured logging, or explicit retry/failure handling.
 
 The poller configuration interface is `EBIRD_REGIONS` (comma-separated region codes), `PARAMETER_NAME` (environment-specific SSM parameter name), and `RAW_BUCKET`. Terraform supplies these Lambda environment variables. `terraform/environments/dev.tfvars` configures `GB-ENG`; deployment-specific region values remain the deployer's responsibility.
 
@@ -36,7 +36,7 @@ Acceptance: configuration supports one and multiple regions; dev continues to us
 - Add configurable S3 lifecycle expiry. One day is the current configured retention, not an immutable architecture constraint.
 - Verify behavior without deploying or modifying production infrastructure.
 
-## Milestone 3 - Processing window and validation
+## Milestone 3 - Processing window and validation (implemented in repository; not deployed)
 
 - Extract only sightings relevant to the current 15-minute processing window from the 24-hour response.
 - Define the minimum internal sighting fields: species, sighting timestamp, and location.

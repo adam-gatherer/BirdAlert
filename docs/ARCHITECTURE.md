@@ -57,14 +57,16 @@ Implemented in repository configuration/code:
 - SSM Parameter Store lookup and Terraform modules for Lambda, IAM, parameter, and S3.
 - Terraform bootstrap code for a remote-state bucket.
 - Raw bucket versioning, encryption, and public-access blocking.
+- S3-triggered processor Lambda with a raw-bucket read-only IAM role.
+- Previous-15-minute window extraction, external-record validation, and transformation into the internal sighting model.
+- Focused tests for processor window boundaries, invalid records, daylight-saving edge cases, and S3-event handling.
 
 Not implemented in the active configuration/code:
 
-- Current-15-minute extraction, validation, transformation, or deduplication.
-- DynamoDB master database or processing function.
+- DynamoDB master database, persistence, deduplication, or idempotency.
 - Read API, API Gateway, latest-10 homepage, or frontend.
 
-Focused tests now cover the poller configuration and failure/key behavior. The repository still has empty placeholder areas for API, transformer, and validation.
+Focused tests cover poller configuration/failure/key behavior and processor handling. API remains a placeholder area.
 
 ## Known mismatches
 

@@ -1,4 +1,4 @@
-import importlib
+import importlib.util
 import json
 import sys
 import types
@@ -9,7 +9,6 @@ from unittest.mock import Mock, call, patch
 
 
 POLLERS_PATH = Path(__file__).resolve().parents[1] / "src" / "poller"
-sys.path.insert(0, str(POLLERS_PATH))
 
 
 class FakeResponse:
@@ -40,7 +39,11 @@ class PollerTests(unittest.TestCase):
             sys.modules,
             {"boto3": boto3_stub, "requests": requests_stub},
         ):
-            cls.app = importlib.import_module("app")
+            spec = importlib.util.spec_from_file_location(
+                "poller_app", POLLERS_PATH / "app.py"
+            )
+            cls.app = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(cls.app)
 
     def setUp(self):
         self.app.ssm = Mock()

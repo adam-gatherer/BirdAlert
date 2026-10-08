@@ -1,4 +1,4 @@
-import importlib
+import importlib.util
 import io
 import json
 import sys
@@ -10,7 +10,6 @@ from unittest.mock import Mock, patch
 
 
 PROCESSOR_PATH = Path(__file__).resolve().parents[1] / "src" / "processor"
-sys.path.insert(0, str(PROCESSOR_PATH))
 
 
 def valid_record(**overrides):
@@ -39,7 +38,11 @@ class ProcessorTests(unittest.TestCase):
         boto3_stub = types.ModuleType("boto3")
         boto3_stub.client = Mock()
         with patch.dict(sys.modules, {"boto3": boto3_stub}):
-            cls.app = importlib.import_module("app")
+            spec = importlib.util.spec_from_file_location(
+                "processor_app", PROCESSOR_PATH / "app.py"
+            )
+            cls.app = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(cls.app)
 
     def setUp(self):
         self.app.s3 = Mock()
