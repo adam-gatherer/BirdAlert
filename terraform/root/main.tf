@@ -20,9 +20,11 @@ module "poller_lambda" {
 
   runtime = "python3.13"
 
-  bucket_name    = module.raw_bucket.bucket_name
-  parameter_name = module.ebird_api_key.parameter_name
-  ebird_regions  = var.ebird_regions
+  environment_variables = {
+    RAW_BUCKET     = module.raw_bucket.bucket_name
+    PARAMETER_NAME = module.ebird_api_key.parameter_name
+    EBIRD_REGIONS  = join(",", var.ebird_regions)
+  }
 }
 
 # creates the parameter store loaded with our API key
@@ -52,4 +54,31 @@ module "poller_schedule" {
   schedule_expression  = "rate(15 minutes)"
   lambda_function_arn  = module.poller_lambda.function_arn
   lambda_function_name = module.poller_lambda.function_name
+}
+
+# processes each raw response after it lands in S3
+module "processor_lambda" {
+  source = "../modules/lambda"
+
+  function_name = "${local.name_prefix}-processor"
+  role_arn      = module.processor_iam.role_arn
+  filename      = "../../build/processor.zip"
+  handler       = "app.lambda_handler"
+  runtime       = "python3.13"
+}
+
+module "processor_iam" {
+  source = "../modules/processor-iam"
+
+  role_name  = "${local.name_prefix}-processor-role"
+  bucket_arn = module.raw_bucket.bucket_arn
+}
+
+module "raw_object_processor" {
+  source = "../modules/s3-lambda-notification"
+
+  bucket_name          = module.raw_bucket.bucket_name
+  bucket_arn           = module.raw_bucket.bucket_arn
+  lambda_function_arn  = module.processor_lambda.function_arn
+  lambda_function_name = module.processor_lambda.function_name
 }

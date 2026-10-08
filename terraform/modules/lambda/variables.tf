@@ -23,17 +23,20 @@ variable "runtime" {
   type        = string
 }
 
-variable "bucket_name" {
-  description = "Raw S3 bucket."
-  type        = string
+variable "environment_variables" {
+  description = "Environment variables supplied to the Lambda function."
+  type        = map(string)
+  default     = {}
 }
 
-variable "parameter_name" {
-  description = "SSM parameter name containing the eBird API key."
-  type        = string
+variable "timeout" {
+  description = "Lambda timeout in seconds."
+  type        = number
+  default     = 30
 }
 
-variable "ebird_regions" {
-  description = "eBird region codes configured for this deployment."
-  type        = list(string)
+variable "memory_size" {
+  description = "Lambda memory allocation in MB."
+  type        = number
+  default     = 256
 }
