@@ -8,7 +8,7 @@ The Bible's roadmap places the basic frontend at Sprint 5. It is included in the
 
 ## Current repository state
 
-Implemented in repository code/configuration: Milestone 1 configuration-driven polling, poller Lambda, eBird API request, SSM lookup, raw S3 write, supporting IAM and Terraform modules, Terraform remote-state bootstrap, and Milestone 2 scheduling/retention. Milestone 3 has S3-triggered processing, previous-15-minute window extraction, validation, and transformation. Milestone 4 persists accepted records to DynamoDB with conditional writes; a SHA-256 hash of submission ID and species code provides idempotency and deduplication, source regions are retained as provenance, and entire private sightings are excluded. Milestone 5 adds the public read API, database-aware health endpoint, timestamp-sorted query records, bounded cursor pagination, UK date conversion, and configurable API throttles. This does not confirm deployment to AWS.
+Implemented in repository code/configuration: Milestone 1 configuration-driven polling, poller Lambda, eBird API request, SSM lookup, raw S3 write, supporting IAM and Terraform modules, Terraform remote-state bootstrap, and Milestone 2 scheduling/retention. Milestone 3 has S3-triggered processing, previous-15-minute window extraction, validation, and transformation. Milestone 4 persists accepted records to DynamoDB with conditional writes; a SHA-256 hash of submission ID and species code provides idempotency and deduplication, source regions are retained as provenance, entire private sightings are excluded, and otherwise well-formed unvalidated eBird records are marked provisional. Milestone 5 adds the public read API, database-aware health endpoint, timestamp-sorted query records, bounded cursor pagination, UK date conversion, and configurable API throttles. This does not confirm deployment to AWS.
 
 Not implemented: homepage or explicit retry/failure handling. Processor logs already provide safe aggregate validation-rejection reasons; broader operational hardening remains Milestone 7.
 
@@ -40,14 +40,14 @@ Acceptance: configuration supports one and multiple regions; dev continues to us
 
 - Extract only sightings relevant to the current 15-minute processing window from the 24-hour response.
 - Define the minimum internal sighting fields: species, sighting timestamp, and location.
-- Validate external records and reject invalid records from the internal model.
+- Validate external record shape and reject malformed records from the internal model. Retain well-formed `obsValid: false` eBird records as provisional, with their validation status persisted and returned by the read API.
 - Keep full raw payloads in S3; do not copy the whole response into the master database.
 - Add focused tests for window selection, boundaries, and invalid records.
 
 ## Milestone 4 - Deduplication and master database (implemented in repository; not deployed)
 
 - Define how sightings are identified as unique and make processing idempotent.
-- Add the DynamoDB master database and persist only unique, valid processed sightings.
+- Add the DynamoDB master database and persist only unique, well-formed processed sightings.
 - Grant least-privilege access and test persistence/deduplication behavior.
 - Exclude private sightings entirely from DynamoDB, superseding the earlier redaction-only implementation; keep complete raw responses in private S3.
 

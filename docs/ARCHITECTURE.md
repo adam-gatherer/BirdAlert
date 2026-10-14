@@ -23,7 +23,7 @@ EventBridge (15-minute heartbeat)
     -> public homepage / API clients
 ```
 
-The processor must select the current 15-minute window from each 24-hour response, not load the entire response into the master database. Store the fields the application needs, at minimum species, sighting timestamp, and location. Keep the complete raw response in S3 rather than copying it wholesale into DynamoDB. Reject invalid records and make processing idempotent so the master database contains only unique sightings.
+The processor must select the current 15-minute window from each 24-hour response, not load the entire response into the master database. Store the fields the application needs, at minimum species, sighting timestamp, location, and validation status. Keep the complete raw response in S3 rather than copying it wholesale into DynamoDB. Reject malformed records and make processing idempotent so the master database contains only unique sightings. Retain well-formed eBird records with `obsValid: false` as `provisional`, rather than misrepresenting them as validated.
 
 Reject entire records marked `locationPrivate: true` before they enter the internal model or DynamoDB. The raw response remains intact in the private S3 bucket for its configured retention; privacy exclusion applies to processed storage and the public API.
 
@@ -49,7 +49,7 @@ The health endpoint must perform a read against the master database using the re
 
 DynamoDB stores one canonical record per unique sighting. It also stores small query records with a timestamp-based sort key for the latest, region, species, and region-plus-species access patterns. The read Lambda queries the appropriate records rather than scanning the canonical dataset and filtering in memory. Query records carry only fields needed for that access pattern and never duplicate raw payloads. The processor uses DynamoDB transactions: it conditionally creates the canonical record and query records, or, on an existing canonical record, adds its source region and writes the applicable query records.
 
-`GET /sightings` returns JSON with `sightings` and a nullable opaque `next_cursor`. Each sighting exposes its stable canonical ID, species code/names, UTC `observed_at`, location ID/name/coordinates, and optional count. Invalid parameters return `400`; unknown routes return `404`; unavailable DynamoDB access returns `503`. `/health` returns `200` with database reachability when a lightweight DynamoDB read succeeds, otherwise `503`. These fields deliberately exclude submissions, source-region provenance, privacy flags, and raw upstream data.
+`GET /sightings` returns JSON with `sightings` and a nullable opaque `next_cursor`. Each sighting exposes its stable canonical ID, species code/names, UTC `observed_at`, `validation_status`, location ID/name/coordinates, and optional count. Invalid parameters return `400`; unknown routes return `404`; unavailable DynamoDB access returns `503`. `/health` returns `200` with database reachability when a lightweight DynamoDB read succeeds, otherwise `503`. These fields deliberately exclude submissions, source-region provenance, privacy flags, and raw upstream data.
 
 ## Phase 2 architecture
 
@@ -70,13 +70,14 @@ Implemented in repository configuration/code:
 - Terraform bootstrap code for a remote-state bucket.
 - Raw bucket versioning, encryption, and public-access blocking.
 - S3-triggered processor Lambda with a raw-bucket read-only IAM role.
-- Previous-15-minute window extraction, external-record validation, and transformation into the internal sighting model.
+- Previous-15-minute window extraction, external-record validation, minute- and second-precision timestamp parsing, and transformation into the internal sighting model.
 - Processor completion logs include aggregate validation-rejection reason counts only; they do not log rejected records or raw sighting data.
 - Focused tests for processor window boundaries, invalid records, daylight-saving edge cases, and S3-event handling.
 - DynamoDB master table with on-demand billing, server-side encryption, and point-in-time recovery.
 - Transactional processor writes that make repeated deliveries idempotent and deduplicate by a SHA-256 hash of eBird submission ID and species code.
 - Source regions retained as provenance without participating in the sighting identity.
 - Entire private-location sightings excluded before persistence, with a second guard at the DynamoDB write boundary; raw payloads remain in private S3.
+- Well-formed `obsValid: false` records retained with a `provisional` validation status exposed through the read API.
 - A DynamoDB global secondary index and minimal timestamp-sorted query records for latest, region, species, and combined lookups.
 - Public HTTP API Gateway routes for `GET /sightings` and `GET /health`, a database-reading Lambda, opaque cursor pagination, validated UK-calendar date filtering, and Terraform-configured route throttles.
 - Focused tests for read queries, date conversion, cursor validation, health connectivity, and API errors.

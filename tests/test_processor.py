@@ -89,8 +89,17 @@ class ProcessorTests(unittest.TestCase):
         self.assertEqual(transformed["source_region"], "GB-ENG")
         self.assertEqual(transformed["count"], 1)
         self.assertFalse(transformed["location_private"])
+        self.assertEqual(transformed["validation_status"], "validated")
         self.assertNotIn("unneeded", transformed)
         self.assertNotIn("obsReviewed", transformed)
+
+    def test_provisional_records_and_second_precision_are_accepted(self):
+        record, observed_at = self.app.transform_record(
+            valid_record(obsValid=False, obsDt="2026-09-30 11:05:42"), "GB-ENG"
+        )
+
+        self.assertEqual(record["validation_status"], "provisional")
+        self.assertEqual(observed_at, datetime(2026, 9, 30, 10, 5, 42, tzinfo=UTC))
 
     def test_sighting_identity_is_independent_of_source_region(self):
         record, _ = self.app.transform_record(valid_record(), "GB-ENG")
@@ -128,6 +137,7 @@ class ProcessorTests(unittest.TestCase):
         )
         self.assertNotIn("submission_id", item)
         self.assertNotIn("source_regions", item)
+        self.assertEqual(item["validation_status"], {"S": "validated"})
 
     @patch.dict(os.environ, {"SIGHTINGS_TABLE": "birdalert-sightings"}, clear=True)
     def test_handler_excludes_private_records_before_dynamodb_writes(self):
@@ -162,7 +172,7 @@ class ProcessorTests(unittest.TestCase):
         payload = [
             valid_record(),
             valid_record(locationPrivate=True),
-            valid_record(obsValid=False),
+            valid_record(obsDt="not-a-time"),
         ]
         self.app.s3.get_object.return_value = {
             "Body": io.BytesIO(json.dumps(payload).encode("utf-8"))
@@ -181,7 +191,7 @@ class ProcessorTests(unittest.TestCase):
         self.assertEqual(
             log_entry["rejection_reason_counts"],
             {
-                "obsValid must be true": 1,
+                "obsDt must use YYYY-MM-DD HH:MM or YYYY-MM-DD HH:MM:SS": 1,
                 "private-location sightings are excluded by policy": 1,
             },
         )
@@ -248,7 +258,7 @@ class ProcessorTests(unittest.TestCase):
             valid_record(obsDt="not-a-time"),
             valid_record(lat=91),
             valid_record(lng=-181),
-            valid_record(obsValid=False),
+            valid_record(obsValid="yes"),
             valid_record(locationPrivate="yes"),
             missing_privacy_record,
             valid_record(howMany=0),

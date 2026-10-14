@@ -18,7 +18,7 @@ Implement the complete ingestion, read API, and simple homepage:
 - eBird provides the previous 24 hours of UK sightings. Each poll stores the complete raw response in one S3 bucket, under a region-based prefix.
 - S3 is the raw landing area. The current lifecycle configuration retains raw data for one day; this remains a deployment/configuration choice, not an immutable architecture constraint.
 - Processing extracts sightings relevant to the current 15-minute processing window from the 24-hour response. It must not copy the entire response into the master database.
-- Validate and process records, reject invalid data, and deduplicate so the master database contains only unique sightings.
+- Validate record shape and process well-formed records, rejecting malformed data and deduplicating so the master database contains only unique sightings. Retain eBird records with `obsValid: false` as `provisional`; do not present them as validated sightings.
 - Exclude entire sightings marked `locationPrivate: true` from the internal model and DynamoDB, rather than retaining redacted sightings. Respect volunteer privacy; complete raw responses remain in the private S3 landing area for their configured retention period.
 - Store the application fields needed for sightings, including at minimum bird/species, sighting timestamp, and sighting location. Keep the full raw payload in S3 rather than duplicating it unnecessarily in the master database.
 - Expose read-only API endpoints for recent sightings, species lookup, region lookup, and health status. Support retrieval by region, species, and date.

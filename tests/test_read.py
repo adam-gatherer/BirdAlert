@@ -26,6 +26,7 @@ def query_item():
         "common_name": {"S": "European Robin"},
         "scientific_name": {"S": "Erithacus rubecula"},
         "observed_at": {"S": "2026-10-14T10:30:00Z"},
+        "validation_status": {"S": "provisional"},
         "location_id": {"S": "L123"},
         "location_name": {"S": "Example reserve"},
         "latitude": {"N": "51.5"},
@@ -62,6 +63,7 @@ class ReadTests(unittest.TestCase):
         self.assertEqual(body["next_cursor"], None)
         self.assertEqual(body["sightings"][0]["species"]["code"], "eurrob")
         self.assertEqual(body["sightings"][0]["location"]["latitude"], 51.5)
+        self.assertEqual(body["sightings"][0]["validation_status"], "provisional")
         request = self.app.dynamodb.query.call_args.kwargs
         self.assertEqual(request["IndexName"], "query-by-key")
         self.assertEqual(request["ExpressionAttributeValues"][":query_key"], {"S": "LATEST"})

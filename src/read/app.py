@@ -141,6 +141,7 @@ def sighting_response(item):
             "scientific_name": attribute_text(item, "scientific_name"),
         },
         "observed_at": attribute_text(item, "observed_at"),
+        "validation_status": attribute_text(item, "validation_status"),
         "location": {
             "id": attribute_text(item, "location_id"),
             "name": attribute_text(item, "location_name"),

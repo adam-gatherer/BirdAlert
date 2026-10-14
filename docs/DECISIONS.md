@@ -10,15 +10,25 @@ Rationale: BirdAlert uses volunteer contributions and must respect their privacy
 
 Complete raw responses remain in the access-restricted S3 landing bucket for their configured retention, as required by the Bible. They are not exposed by the read API. This change prevents new private records entering DynamoDB; any previously persisted private records would require separately reviewed cleanup. No AWS cleanup is performed by this change.
 
+## 2026-10-14 - Provisional eBird sightings retained with explicit status
+
+Accepted and implemented locally. Well-formed eBird records with `obsValid: false` enter the internal model and DynamoDB with `validation_status: "provisional"`; records with `obsValid: true` are marked `"validated"`. The read API returns this status so clients do not mistake a provisional report for a validated one. `obsValid` must still be a boolean, and malformed records remain rejected.
+
+Rationale: the UK notable-feed test run contained predominantly provisional records. Excluding them made the MVP unable to demonstrate its end-to-end ingestion, storage, and API flow. The project deliberately prioritises demonstrating a responsible AWS and agentic-development workflow while preserving an honest data-quality signal for the client and future refinements. This is not a claim that provisional sightings have been confirmed.
+
+Private-location exclusion remains unchanged: `locationPrivate: true` records are never persisted or exposed. The change is intentionally limited to eBird's validation marker, not contributor privacy.
+
+The processor now accepts eBird timestamps with minute or second precision. Date-only timestamps remain rejected because they cannot be assigned safely to a 15-minute processing window.
+
 ## 2026-10-14 - Region means eBird poll source region
 
-Accepted; ingestion provenance is already implemented, API queries remain pending. API region filters refer to the eBird region code used to poll sightings, such as the configured development code `GB-ENG`. A sighting can retain multiple source regions when overlapping polls return it. Region does not participate in sighting identity and is unrelated to the AWS deployment region.
+Accepted and implemented locally. API region filters refer to the eBird region code used to poll sightings, such as the configured development code `GB-ENG`. A sighting can retain multiple source regions when overlapping polls return it. Region does not participate in sighting identity and is unrelated to the AWS deployment region.
 
 Rationale: using the source's region vocabulary keeps ingestion and retrieval consistent and preserves room for future expansion. The MVP remains UK-only; future international coverage would need additional design, including observation timezone handling.
 
 ## 2026-10-14 - App-focused public API with combined filters
 
-Accepted and implemented locally. The read API primarily serves BirdAlert's homepage using validated sightings accumulated in DynamoDB. It does not serve raw eBird dumps or poll eBird on each client request. The upstream 24-hour response window and raw S3 retention do not impose a 24-hour retention limit on processed DynamoDB sightings; the table currently has no expiry.
+Accepted and implemented locally. The read API primarily serves BirdAlert's homepage using processed sightings accumulated in DynamoDB. It does not serve raw eBird dumps or poll eBird on each client request. The upstream 24-hour response window and raw S3 retention do not impose a 24-hour retention limit on processed DynamoDB sightings; the table currently has no expiry.
 
 Region, species, and date filters may be combined. `GET /sightings` accepts optional `region`, `species`, `date`, `limit`, and `cursor` parameters. It returns 10 latest sightings by default and permits at most 50 records in one page. Species lookup means filtering sightings by eBird species code; a separate species catalogue is not part of Phase 1. Public unauthenticated access also allows direct requests from other clients, so app ownership cannot be enforced simply by hiding the endpoint or restricting browser CORS origins.
 

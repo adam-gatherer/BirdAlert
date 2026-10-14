@@ -16,7 +16,7 @@ UK_TIMEZONE = ZoneInfo("Europe/London")
 RAW_KEY_PATTERN = re.compile(
     r"^(?P<region>[^/]+)/(?P<timestamp>\d{8}T\d{6}\.\d{6}Z)-[^/]+\.json$"
 )
-OBSERVATION_TIME_FORMAT = "%Y-%m-%d %H:%M"
+OBSERVATION_TIME_FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M")
 
 
 class InvalidRecord(ValueError):
@@ -51,10 +51,14 @@ def observation_time_utc(value):
     if not isinstance(value, str) or not value.strip():
         raise InvalidRecord("obsDt must be a non-empty timestamp")
 
-    try:
-        local_time = datetime.strptime(value, OBSERVATION_TIME_FORMAT)
-    except ValueError as error:
-        raise InvalidRecord("obsDt must use YYYY-MM-DD HH:MM") from error
+    for time_format in OBSERVATION_TIME_FORMATS:
+        try:
+            local_time = datetime.strptime(value, time_format)
+            break
+        except ValueError:
+            continue
+    else:
+        raise InvalidRecord("obsDt must use YYYY-MM-DD HH:MM or YYYY-MM-DD HH:MM:SS")
 
     candidates = set()
     for fold in (0, 1):
@@ -90,8 +94,8 @@ def transform_record(record, source_region):
     if not isinstance(record, dict):
         raise InvalidRecord("record must be a JSON object")
 
-    if not isinstance(record.get("obsValid"), bool) or not record["obsValid"]:
-        raise InvalidRecord("obsValid must be true")
+    if not isinstance(record.get("obsValid"), bool):
+        raise InvalidRecord("obsValid must be a boolean")
     if not isinstance(record.get("locationPrivate"), bool):
         raise InvalidRecord("locationPrivate must be a boolean")
     if record["locationPrivate"]:
@@ -108,6 +112,7 @@ def transform_record(record, source_region):
         "latitude": required_coordinate(record, "lat", -90, 90),
         "longitude": required_coordinate(record, "lng", -180, 180),
         "location_private": record["locationPrivate"],
+        "validation_status": "validated" if record["obsValid"] else "provisional",
         "submission_id": required_string(record, "subId"),
         "source_region": source_region,
     }
@@ -138,6 +143,7 @@ def dynamodb_item(record):
         "observed_at": {"S": record["observed_at"]},
         "submission_id": {"S": record["submission_id"]},
         "location_private": {"BOOL": record["location_private"]},
+        "validation_status": {"S": record["validation_status"]},
         "source_regions": {"SS": [record["source_region"]]},
         "location_id": {"S": record["location_id"]},
         "location_name": {"S": record["location_name"]},
@@ -176,6 +182,7 @@ def query_item(record, query_key):
         "common_name",
         "scientific_name",
         "observed_at",
+        "validation_status",
         "location_id",
         "location_name",
         "latitude",
