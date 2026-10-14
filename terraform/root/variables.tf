@@ -44,17 +44,6 @@ variable "ebird_api_key" {
   sensitive   = true
 }
 
-variable "api_allowed_origins" {
-  description = "Browser origins allowed to call the public read API."
-  type        = list(string)
-  default     = ["*"]
-
-  validation {
-    condition     = length(var.api_allowed_origins) > 0
-    error_message = "api_allowed_origins must contain at least one origin."
-  }
-}
-
 variable "sightings_throttle_rate" {
   description = "Sustained requests per second for GET /sightings."
   type        = number

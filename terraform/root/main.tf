@@ -3,6 +3,10 @@ resource "random_id" "raw_bucket_suffix" {
   byte_length = 4
 }
 
+resource "random_id" "site_bucket_suffix" {
+  byte_length = 4
+}
+
 # creates the raw bucket for dumping API data
 module "raw_bucket" {
   source = "../modules/s3"
@@ -113,17 +117,48 @@ module "read_iam" {
   sightings_table_arn = module.sightings_table.table_arn
 }
 
+module "static_site" {
+  source = "../modules/static-site"
+
+  bucket_name       = "${local.name_prefix}-site-${random_id.site_bucket_suffix.hex}"
+  distribution_name = "${local.name_prefix}-site"
+}
+
 module "read_api" {
   source = "../modules/http-api"
 
   api_name                 = "${local.name_prefix}-read-api"
   lambda_function_arn      = module.read_lambda.function_arn
   lambda_function_name     = module.read_lambda.function_name
-  allowed_origins          = var.api_allowed_origins
+  allowed_origins          = [module.static_site.site_url]
   sightings_throttle_rate  = var.sightings_throttle_rate
   sightings_throttle_burst = var.sightings_throttle_burst
   health_throttle_rate     = var.health_throttle_rate
   health_throttle_burst    = var.health_throttle_burst
+}
+
+resource "aws_s3_object" "site_asset" {
+  for_each = local.site_asset_files
+
+  bucket        = module.static_site.bucket_name
+  key           = each.value
+  source        = "${local.site_directory}/${each.value}"
+  etag          = filemd5("${local.site_directory}/${each.value}")
+  cache_control = "public, max-age=300"
+  content_type = lookup(
+    local.site_content_types,
+    element(reverse(split(".", each.value)), 0),
+    "application/octet-stream",
+  )
+}
+
+resource "aws_s3_object" "site_config" {
+  bucket        = module.static_site.bucket_name
+  key           = "config.js"
+  content       = templatefile("${local.site_directory}/config.js.tftpl", { api_endpoint = module.read_api.endpoint })
+  etag          = md5(templatefile("${local.site_directory}/config.js.tftpl", { api_endpoint = module.read_api.endpoint }))
+  cache_control = "public, max-age=300"
+  content_type  = local.site_content_types.js
 }
 
 module "raw_object_processor" {

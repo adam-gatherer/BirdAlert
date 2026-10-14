@@ -58,7 +58,7 @@ Cognito authenticates users; email is the username. Phase 2 retains the Bible's 
 
 ## Current implementation
 
-The active implementation is substantially earlier than the intended Phase 1 architecture.
+The active implementation covers Milestones 1 through 6 locally; final operational hardening remains.
 
 Implemented in repository configuration/code:
 
@@ -83,10 +83,12 @@ Implemented in repository configuration/code:
 - A DynamoDB global secondary index and minimal timestamp-sorted query records for latest, region, species, and combined lookups.
 - Public HTTP API Gateway routes for `GET /sightings` and `GET /health`, a database-reading Lambda, opaque cursor pagination, validated UK-calendar date filtering, and Terraform-configured route throttles.
 - Focused tests for read queries, date conversion, cursor validation, health connectivity, and API errors.
+- Plain static homepage assets under `site/`, fetching the latest sightings once on page load and showing provisional reports honestly.
+- A separate private S3 site bucket, CloudFront distribution with Origin Access Control and HTTPS redirect, exact CloudFront-origin CORS, and Terraform-managed asset/config deployment. CloudFront uses the UK-suitable `PriceClass_100` and a five-minute static-asset cache lifetime.
 
 Not implemented in the active configuration/code:
 
-- Latest-10 homepage or frontend.
+- Explicit retry/failure handling beyond the current visible errors and structured completion logs.
 
 Focused tests cover poller configuration/failure/key behavior, processor handling, persistence, deduplication, private-location exclusion, and the read API.
 

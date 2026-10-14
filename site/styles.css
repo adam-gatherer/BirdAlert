@@ -1,0 +1,82 @@
+html {
+  background: #fff;
+  color: #000;
+}
+
+body {
+  margin: 0;
+  padding: 16px;
+  background: #fff;
+  color: #000;
+  font-family: "Times New Roman", Times, serif;
+  font-size: 16px;
+}
+
+main {
+  max-width: 760px;
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 0.5em;
+  font-size: 2em;
+}
+
+h2 {
+  margin: 1.25em 0 0.5em;
+  font-size: 1.3em;
+}
+
+p {
+  margin-bottom: 1em;
+}
+
+a:link {
+  color: #0000ee;
+}
+
+a:visited {
+  color: #551a8b;
+}
+
+a:active {
+  color: #f00;
+}
+
+hr {
+  margin: 1.25em 0;
+}
+
+.status {
+  color: #000;
+}
+
+.status.error {
+  font-weight: bold;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 4px 6px;
+  border: 1px solid #000;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  font-weight: bold;
+}
+
+.provisional {
+  font-style: italic;
+}

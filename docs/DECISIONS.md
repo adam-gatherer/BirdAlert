@@ -48,11 +48,11 @@ Rationale: combined filters support useful app queries while a 50-result maximum
 
 ## 2026-10-14 - Static homepage delivery and page-load-only data reads
 
-Accepted for Milestone 6 implementation. Plain static homepage assets will live in the repository's `site/` directory. Terraform will deploy them to a dedicated private S3 site bucket, and CloudFront will deliver them publicly using Origin Access Control. The raw-data bucket remains separate and inaccessible to CloudFront.
+Accepted and implemented locally. Plain static homepage assets live in the repository's `site/` directory. Terraform deploys them to a dedicated private S3 site bucket, and CloudFront delivers them publicly using Origin Access Control. The raw-data bucket remains separate and inaccessible to CloudFront.
 
 The homepage will request `GET /sightings` once when a user opens the page. It will not poll in the background, and CloudFront will cache only static site assets rather than proxying or caching the API response. API Gateway, the read Lambda, and the bounded DynamoDB latest-sightings query remain the live data path. Terraform will configure the API CORS origin for the CloudFront site domain.
 
-Rationale: expected users will normally view the page briefly, so a scheduled client-side refresh would add requests without meaningful benefit. A single page-load request gives each visitor current data while keeping Lambda and DynamoDB interactions low. The existing bounded query and API throttles provide the appropriate low-cost protection at this stage. CloudFront reduces direct S3 asset reads and protects the site bucket without adding a second copy of dynamic sighting data or cache invalidation complexity.
+Rationale: expected users will normally view the page briefly, so a scheduled client-side refresh would add requests without meaningful benefit. A single page-load request gives each visitor current data while keeping Lambda and DynamoDB interactions low. The existing bounded query and API throttles provide the appropriate low-cost protection at this stage. CloudFront reduces direct S3 asset reads and protects the site bucket without adding a second copy of dynamic sighting data or cache invalidation complexity. `PriceClass_100` serves the UK while limiting edge-location cost, and the five-minute asset cache balances reduced S3 reads with timely Terraform-deployed updates.
 
 ## 2026-10-14 - UK calendar-date API filter
 
