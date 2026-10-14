@@ -33,8 +33,13 @@ data "aws_iam_policy_document" "raw_bucket_read" {
 
 data "aws_iam_policy_document" "sightings_write" {
   statement {
-    effect    = "Allow"
-    actions   = ["dynamodb:BatchGetItem", "dynamodb:TransactWriteItems"]
+    effect = "Allow"
+    actions = [
+      "dynamodb:BatchGetItem",
+      "dynamodb:PutItem",
+      "dynamodb:TransactWriteItems",
+      "dynamodb:UpdateItem",
+    ]
     resources = [var.sightings_table_arn]
   }
 }
