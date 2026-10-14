@@ -277,6 +277,14 @@ def process_payload(payload, source_region, ingested_at):
     }
 
 
+def rejection_reason_counts(rejected):
+    counts = {}
+    for rejection in rejected:
+        reason = rejection["reason"]
+        counts[reason] = counts.get(reason, 0) + 1
+    return dict(sorted(counts.items()))
+
+
 def process_s3_record(event_record):
     bucket_name = event_record["s3"]["bucket"]["name"]
     object_key = unquote_plus(event_record["s3"]["object"]["key"])
@@ -310,6 +318,7 @@ def process_s3_record(event_record):
                 "window_end": result["window_end"],
                 "accepted_records": len(result["accepted"]),
                 "rejected_records": len(result["rejected"]),
+                "rejection_reason_counts": rejection_reason_counts(result["rejected"]),
                 "persisted_records": persisted_records,
                 "duplicate_records": duplicate_records,
             }

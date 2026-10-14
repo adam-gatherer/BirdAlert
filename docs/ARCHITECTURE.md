@@ -71,6 +71,7 @@ Implemented in repository configuration/code:
 - Raw bucket versioning, encryption, and public-access blocking.
 - S3-triggered processor Lambda with a raw-bucket read-only IAM role.
 - Previous-15-minute window extraction, external-record validation, and transformation into the internal sighting model.
+- Processor completion logs include aggregate validation-rejection reason counts only; they do not log rejected records or raw sighting data.
 - Focused tests for processor window boundaries, invalid records, daylight-saving edge cases, and S3-event handling.
 - DynamoDB master table with on-demand billing, server-side encryption, and point-in-time recovery.
 - Transactional processor writes that make repeated deliveries idempotent and deduplicate by a SHA-256 hash of eBird submission ID and species code.

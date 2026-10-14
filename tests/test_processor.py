@@ -157,6 +157,38 @@ class ProcessorTests(unittest.TestCase):
         self.assertEqual(item["location_private"], {"BOOL": False})
         self.app.s3.put_object.assert_not_called()
 
+    @patch.dict(os.environ, {"SIGHTINGS_TABLE": "birdalert-sightings"}, clear=True)
+    def test_completion_log_aggregates_rejection_reasons_without_records(self):
+        payload = [
+            valid_record(),
+            valid_record(locationPrivate=True),
+            valid_record(obsValid=False),
+        ]
+        self.app.s3.get_object.return_value = {
+            "Body": io.BytesIO(json.dumps(payload).encode("utf-8"))
+        }
+        event_record = {
+            "s3": {
+                "bucket": {"name": "birdalert-raw"},
+                "object": {"key": "GB-ENG/20260930T101700.000000Z-test.json"},
+            }
+        }
+
+        with patch("builtins.print") as output:
+            self.app.process_s3_record(event_record)
+
+        log_entry = json.loads(output.call_args.args[0])
+        self.assertEqual(
+            log_entry["rejection_reason_counts"],
+            {
+                "obsValid must be true": 1,
+                "private-location sightings are excluded by policy": 1,
+            },
+        )
+        self.assertNotIn("accepted", log_entry)
+        self.assertNotIn("rejected", log_entry)
+        self.assertNotIn("S397765667", output.call_args.args[0])
+
     def test_persistence_guard_prevents_private_location_writes(self):
         record, _ = self.app.transform_record(valid_record(), "GB-ENG")
 
