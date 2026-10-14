@@ -94,6 +94,8 @@ def transform_record(record, source_region):
         raise InvalidRecord("obsValid must be true")
     if not isinstance(record.get("locationPrivate"), bool):
         raise InvalidRecord("locationPrivate must be a boolean")
+    if record["locationPrivate"]:
+        raise InvalidRecord("private-location sightings are excluded by policy")
 
     observed_at = observation_time_utc(record.get("obsDt"))
     transformed = {
@@ -125,6 +127,9 @@ def sighting_id(record):
 
 
 def dynamodb_item(record):
+    if record["location_private"] is not False:
+        raise InvalidRecord("private-location sightings cannot be persisted")
+
     item = {
         "sighting_id": {"S": sighting_id(record)},
         "species_code": {"S": record["species_code"]},
@@ -134,19 +139,11 @@ def dynamodb_item(record):
         "submission_id": {"S": record["submission_id"]},
         "location_private": {"BOOL": record["location_private"]},
         "source_regions": {"SS": [record["source_region"]]},
+        "location_id": {"S": record["location_id"]},
+        "location_name": {"S": record["location_name"]},
+        "latitude": {"N": str(record["latitude"])},
+        "longitude": {"N": str(record["longitude"])},
     }
-
-    if record["location_private"]:
-        item["location_name"] = {"S": "Private location"}
-    else:
-        item.update(
-            {
-                "location_id": {"S": record["location_id"]},
-                "location_name": {"S": record["location_name"]},
-                "latitude": {"N": str(record["latitude"])},
-                "longitude": {"N": str(record["longitude"])},
-            }
-        )
 
     if "count" in record:
         item["count"] = {"N": str(record["count"])}

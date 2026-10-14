@@ -18,9 +18,11 @@ The system shall:
 8. Transform valid records into an internal model and deduplicate them so the master database contains only unique sightings.
 9. Store at minimum species, sighting timestamp, and sighting location in the master database. Do not unnecessarily duplicate the full raw payload there.
 10. Make processing idempotent.
-11. Provide a read-only API for recent sightings, species lookup, region lookup, health, and retrieval by region, species, and date.
+11. Provide a read-only API for recent sightings, species lookup, region lookup, health, and retrieval by region, species, and date, including combinations of these filters. Region refers to the configured eBird region used to obtain a sighting, not the AWS deployment region.
 12. Provide a public homepage that obtains data through the read API and displays the 10 most recent sightings with species, location, and timestamp.
 13. Have the latest-sightings endpoint query the master database when requested. Do not require sessions, cookies, authentication, persistent latest-10 caching, Redis, or ElastiCache for the public Phase 1 homepage.
+14. Exclude entire records marked `locationPrivate: true` from the internal model and master database. Preserve complete raw responses only in the private S3 landing area for their configured retention.
+15. Have the health endpoint check the read function's connectivity and permission to access the master database, rather than returning function liveness alone.
 
 The exact database key/index access pattern for the latest-10 query is an implementation concern for the read API milestone, not an additional product requirement. A frontend refresh every 15 minutes is optional; backend correctness must not rely on a cached homepage copy.
 
@@ -34,6 +36,7 @@ The system shall:
 - validate external input;
 - avoid credentials in source code;
 - use structured logging and preserve raw responses in S3 for their configured retention period.
+- apply configurable conservative request/burst throttling to the public API and bound database work per request to reduce abuse and cost; throttling is not a guaranteed request ceiling or spending cap.
 
 ## Non-functional requirements
 
@@ -57,4 +60,4 @@ Multi-tenancy, analytics, AI product features, mobile applications, advanced adm
 
 ## Current implementation status
 
-The repository currently has a poller Lambda with Terraform-supplied region and SSM configuration, a 15-minute EventBridge heartbeat, one-day raw S3 lifecycle expiry, region-prefixed raw S3 writes, and an S3-triggered processor Lambda. The processor extracts the previous 15-minute window, validates external records, and conditionally persists the internal model to DynamoDB. A SHA-256 hash of eBird submission ID and species code provides idempotency and deduplication; source regions are retained as provenance and private locations are redacted before persistence. Read API and homepage remain unimplemented. These are status observations, not reductions to the requirements.
+The repository currently has a poller Lambda with Terraform-supplied region and SSM configuration, a 15-minute EventBridge heartbeat, one-day raw S3 lifecycle expiry, region-prefixed raw S3 writes, and an S3-triggered processor Lambda. The processor extracts the previous 15-minute window, validates external records, and conditionally persists the internal model to DynamoDB. A SHA-256 hash of eBird submission ID and species code provides idempotency and deduplication; source regions are retained as provenance and private sightings are excluded entirely before persistence. Read API, database-aware health checks, API throttling, and homepage remain unimplemented. These are status observations, not reductions to the requirements.

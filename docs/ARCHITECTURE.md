@@ -25,6 +25,8 @@ EventBridge (15-minute heartbeat)
 
 The processor must select the current 15-minute window from each 24-hour response, not load the entire response into the master database. Store the fields the application needs, at minimum species, sighting timestamp, and location. Keep the complete raw response in S3 rather than copying it wholesale into DynamoDB. Reject invalid records and make processing idempotent so the master database contains only unique sightings.
 
+Reject entire records marked `locationPrivate: true` before they enter the internal model or DynamoDB. The raw response remains intact in the private S3 bucket for its configured retention; privacy exclusion applies to processed storage and the public API.
+
 The public homepage requests the read API for the 10 most recent sightings and displays species, location, and timestamp. API Gateway invokes a read Lambda, which queries DynamoDB when requested. No user session, cookie, authentication, or persistent latest-sightings cache is needed for Phase 1. Frontend refresh every 15 minutes is optional. Do not add caching infrastructure absent a measured need.
 
 The database key/index pattern for the latest-10 query is an implementation decision for the API milestone. The exact processor trigger after the raw S3 write is also not prescribed here and should be decided in that milestone without changing the product flow.
@@ -38,6 +40,12 @@ Use least-privilege IAM, Parameter Store for secrets/configuration, encryption w
 ## Intended API
 
 Provide read-only endpoints for recent sightings, species lookup, region lookup, and health. Support retrieval by region, species, and date. The homepage's latest-10 request uses the same read API and reads the database at request time.
+
+Region/species/date filters can be combined. Region is an eBird poll source code, retained in the item's `source_regions` set, not the AWS region. This preserves expansion options without expanding the UK-only MVP or implying that international time handling is implemented.
+
+The API primarily serves BirdAlert's homepage. Because it is public and unauthenticated, other clients can call it directly; browser CORS restrictions do not authenticate callers. Apply conservative configurable throttling and bounded query/page sizes. API Gateway throttles are best-effort targets, not hard cost caps. Endpoint shapes, date semantics, result limits, and throttle values remain to be agreed before Milestone 5 implementation.
+
+The health endpoint must perform a read against the master database using the read function's IAM role. A successful check verifies database access; it does not by itself prove ingestion is healthy or sightings are fresh. See [design decisions](DECISIONS.md) for the rationale and implementation status.
 
 ## Phase 2 architecture
 
@@ -63,18 +71,19 @@ Implemented in repository configuration/code:
 - DynamoDB master table with on-demand billing, server-side encryption, and point-in-time recovery.
 - Conditional processor writes that make repeated deliveries idempotent and deduplicate by a SHA-256 hash of eBird submission ID and species code.
 - Source regions retained as provenance without participating in the sighting identity.
-- Redaction of private-location records before persistence; raw payloads remain in S3.
+- Entire private-location sightings excluded before persistence, with a second guard at the DynamoDB write boundary; raw payloads remain in private S3.
 
 Not implemented in the active configuration/code:
 
 - Read API, API Gateway, latest-10 homepage, or frontend.
 
-Focused tests cover poller configuration/failure/key behavior, processor handling, persistence, deduplication, and private-location redaction. API remains a placeholder area.
+Focused tests cover poller configuration/failure/key behavior, processor handling, persistence, deduplication, and private-location exclusion. API remains a placeholder area.
 
 ## Known mismatches
 
 - The dev tfvars configures `GB-ENG`; deployment region values are not hard-coded in application code.
 - The root Terraform backend has a fixed dev state key despite dev and prod variable files.
+- The raw bucket currently uses a fixed name (`birdalert-dev-raw` in development) without a random suffix. A stable Terraform-generated eight-character lowercase alphanumeric suffix is proposed, pending human confirmation; changing an existing bucket name requires replacement and plan review.
 - The README describes capabilities that are not yet implemented.
 
 These are known gaps, not reasons to redesign the product. See `docs/ROADMAP.md` for milestones.

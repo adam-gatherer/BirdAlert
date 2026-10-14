@@ -19,8 +19,11 @@ Implement the complete ingestion, read API, and simple homepage:
 - S3 is the raw landing area. The current lifecycle configuration retains raw data for one day; this remains a deployment/configuration choice, not an immutable architecture constraint.
 - Processing extracts sightings relevant to the current 15-minute processing window from the 24-hour response. It must not copy the entire response into the master database.
 - Validate and process records, reject invalid data, and deduplicate so the master database contains only unique sightings.
+- Exclude entire sightings marked `locationPrivate: true` from the internal model and DynamoDB, rather than retaining redacted sightings. Respect volunteer privacy; complete raw responses remain in the private S3 landing area for their configured retention period.
 - Store the application fields needed for sightings, including at minimum bird/species, sighting timestamp, and sighting location. Keep the full raw payload in S3 rather than duplicating it unnecessarily in the master database.
 - Expose read-only API endpoints for recent sightings, species lookup, region lookup, and health status. Support retrieval by region, species, and date.
+- Allow region, species, and date filters to be combined. A sighting's region means the eBird source region used to poll it; retain this provenance independently of its identity.
+- Have the health endpoint verify that the read function can access the master database, rather than reporting function liveness alone.
 - A simple public homepage displays the 10 most recent sightings (species, location, timestamp) by requesting the read API.
 - Terraform provisions AWS infrastructure.
 
@@ -39,6 +42,8 @@ The S3 lifecycle should expire old raw dumps. The current configured retention i
 ## Phase 1 web application
 
 The homepage is public and needs no user sessions, session cookies, authentication, or application state. On request, the API Gateway endpoint invokes a read Lambda, which queries the master database and returns the latest 10 sightings. Do not add a persistent cache solely for these results. A frontend refresh on a 15-minute cadence is optional; backend correctness must not depend on a cached homepage copy. Do not add Redis/ElastiCache or other caching infrastructure without a future measured need.
+
+The read API primarily serves BirdAlert's own homepage using processed DynamoDB sightings, not the raw eBird dumps. Its unauthenticated public endpoint can also receive direct requests from other clients. Apply conservative configurable request/burst throttling and bounded database reads to reduce abuse and cost; throttling is not a guaranteed spending cap.
 
 ## Security and quality
 

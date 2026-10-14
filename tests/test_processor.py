@@ -26,7 +26,7 @@ def valid_record(**overrides):
         "lng": -76.21875,
         "obsValid": True,
         "obsReviewed": False,
-        "locationPrivate": True,
+        "locationPrivate": False,
         "subId": "S397765667",
     }
     record.update(overrides)
@@ -88,25 +88,62 @@ class ProcessorTests(unittest.TestCase):
         transformed = result["accepted"][0]
         self.assertEqual(transformed["source_region"], "GB-ENG")
         self.assertEqual(transformed["count"], 1)
-        self.assertTrue(transformed["location_private"])
+        self.assertFalse(transformed["location_private"])
         self.assertNotIn("unneeded", transformed)
         self.assertNotIn("obsReviewed", transformed)
 
-    def test_dynamodb_item_redacts_private_location_and_has_stable_identity(self):
-        private_record, _ = self.app.transform_record(valid_record(), "GB-ENG")
+    def test_sighting_identity_is_independent_of_source_region(self):
+        record, _ = self.app.transform_record(valid_record(), "GB-ENG")
         other_region_record, _ = self.app.transform_record(valid_record(), "GB-SCT")
 
-        item = self.app.dynamodb_item(private_record)
+        item = self.app.dynamodb_item(record)
 
         self.assertEqual(
             item["sighting_id"],
             self.app.dynamodb_item(other_region_record)["sighting_id"],
         )
-        self.assertEqual(item["location_name"], {"S": "Private location"})
         self.assertEqual(item["source_regions"], {"SS": ["GB-ENG"]})
-        self.assertNotIn("location_id", item)
-        self.assertNotIn("latitude", item)
-        self.assertNotIn("longitude", item)
+
+    @patch.dict(os.environ, {"SIGHTINGS_TABLE": "birdalert-sightings"}, clear=True)
+    def test_handler_excludes_private_records_before_dynamodb_writes(self):
+        payload = [valid_record(locationPrivate=True), valid_record()]
+        raw_body = json.dumps(payload).encode("utf-8")
+        self.app.s3.get_object.return_value = {"Body": io.BytesIO(raw_body)}
+        event = {
+            "Records": [
+                {
+                    "s3": {
+                        "bucket": {"name": "birdalert-raw"},
+                        "object": {
+                            "key": "GB-ENG/20260930T101700.000000Z-test.json"
+                        },
+                    }
+                }
+            ]
+        }
+
+        result = self.app.lambda_handler(event, None)
+
+        self.assertEqual(result["accepted_records"], 1)
+        self.assertEqual(result["rejected_records"], 1)
+        self.assertEqual(result["persisted_records"], 1)
+        self.app.dynamodb.put_item.assert_called_once()
+        item = self.app.dynamodb.put_item.call_args.kwargs["Item"]
+        self.assertEqual(item["location_private"], {"BOOL": False})
+        self.app.dynamodb.update_item.assert_not_called()
+        self.app.s3.put_object.assert_not_called()
+
+    def test_persistence_guard_prevents_private_location_writes(self):
+        record, _ = self.app.transform_record(valid_record(), "GB-ENG")
+
+        for privacy_flag in (True, None, "false", 0):
+            with self.subTest(privacy_flag=privacy_flag):
+                record["location_private"] = privacy_flag
+                with self.assertRaisesRegex(self.app.InvalidRecord, "cannot be persisted"):
+                    self.app.persist_sighting(record, "birdalert-sightings")
+
+        self.app.dynamodb.put_item.assert_not_called()
+        self.app.dynamodb.update_item.assert_not_called()
 
     def test_dynamodb_item_keeps_non_private_location(self):
         record, _ = self.app.transform_record(
@@ -141,6 +178,8 @@ class ProcessorTests(unittest.TestCase):
         )
 
     def test_incomplete_and_invalid_records_are_rejected(self):
+        missing_privacy_record = valid_record()
+        del missing_privacy_record["locationPrivate"]
         invalid_records = [
             valid_record(comName=""),
             valid_record(obsDt="not-a-time"),
@@ -148,6 +187,7 @@ class ProcessorTests(unittest.TestCase):
             valid_record(lng=-181),
             valid_record(obsValid=False),
             valid_record(locationPrivate="yes"),
+            missing_privacy_record,
             valid_record(howMany=0),
             ["not", "an", "object"],
         ]
