@@ -2,7 +2,7 @@ import hashlib
 import json
 import os
 import re
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from urllib.parse import unquote_plus
 from zoneinfo import ZoneInfo
 
@@ -17,6 +17,7 @@ RAW_KEY_PATTERN = re.compile(
     r"^(?P<region>[^/]+)/(?P<timestamp>\d{8}T\d{6}\.\d{6}Z)-[^/]+\.json$"
 )
 OBSERVATION_TIME_FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M")
+MAX_BATCH_GET_ATTEMPTS = 3
 
 
 class InvalidRecord(ValueError):
@@ -34,17 +35,11 @@ def raw_object_context(object_key):
     return match.group("region"), ingested_at
 
 
-def processing_window(ingested_at):
+def first_seen_at(ingested_at):
     if ingested_at.tzinfo is None:
         raise ValueError("Ingestion timestamp must be timezone-aware")
 
-    ingested_at = ingested_at.astimezone(UTC)
-    boundary = ingested_at.replace(
-        minute=(ingested_at.minute // 15) * 15,
-        second=0,
-        microsecond=0,
-    )
-    return boundary - timedelta(minutes=15), boundary
+    return ingested_at.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 def observation_time_utc(value):
@@ -144,6 +139,7 @@ def dynamodb_item(record):
         "submission_id": {"S": record["submission_id"]},
         "location_private": {"BOOL": record["location_private"]},
         "validation_status": {"S": record["validation_status"]},
+        "first_seen_at": {"S": record["first_seen_at"]},
         "source_regions": {"SS": [record["source_region"]]},
         "location_id": {"S": record["location_id"]},
         "location_name": {"S": record["location_name"]},
@@ -228,27 +224,68 @@ def persist_sighting(record, table_name):
         )
     except Exception as error:
         if is_duplicate_error(error):
-            dynamodb.transact_write_items(
-                TransactItems=[
-                    {
-                        "Update": {
-                            "TableName": table_name,
-                            "Key": {"sighting_id": {"S": sighting_id(record)}},
-                            "UpdateExpression": "ADD source_regions :source_region",
-                            "ExpressionAttributeValues": {
-                                ":source_region": {"SS": [record["source_region"]]}
-                            },
-                        }
-                    },
-                    *[
-                        {"Put": {"TableName": table_name, "Item": item}}
-                        for item in query_items
-                    ],
-                ]
-            )
             return False
         raise
     return True
+
+
+def persist_source_region(record, table_name):
+    region_query_items = [
+        query_item(record, query_key)
+        for query_key in query_keys(record)
+        if query_key.startswith("REGION#")
+    ]
+    dynamodb.transact_write_items(
+        TransactItems=[
+            {
+                "Update": {
+                    "TableName": table_name,
+                    "Key": {"sighting_id": {"S": sighting_id(record)}},
+                    "ConditionExpression": "attribute_exists(sighting_id)",
+                    "UpdateExpression": "ADD source_regions :source_region",
+                    "ExpressionAttributeValues": {
+                        ":source_region": {"SS": [record["source_region"]]}
+                    },
+                }
+            },
+            *[
+                {"Put": {"TableName": table_name, "Item": item}}
+                for item in region_query_items
+            ],
+        ]
+    )
+
+
+def existing_source_regions(records, table_name):
+    record_ids = list(dict.fromkeys(sighting_id(record) for record in records))
+    existing = {}
+
+    for start in range(0, len(record_ids), 100):
+        request_items = {
+            table_name: {
+                "Keys": [
+                    {"sighting_id": {"S": record_id}}
+                    for record_id in record_ids[start : start + 100]
+                ],
+                "ProjectionExpression": "sighting_id, source_regions",
+            }
+        }
+        for _ in range(MAX_BATCH_GET_ATTEMPTS):
+            response = dynamodb.batch_get_item(RequestItems=request_items)
+            for item in response.get("Responses", {}).get(table_name, []):
+                record_id = item.get("sighting_id", {}).get("S")
+                if record_id:
+                    existing[record_id] = set(
+                        item.get("source_regions", {}).get("SS", [])
+                    )
+
+            request_items = response.get("UnprocessedKeys", {})
+            if not request_items:
+                break
+        else:
+            raise RuntimeError("DynamoDB did not process all requested sighting keys")
+
+    return existing
 
 
 def sightings_table_name():
@@ -264,21 +301,20 @@ def process_payload(payload, source_region, ingested_at):
     if not isinstance(source_region, str) or not source_region:
         raise ValueError("Source region must be a non-empty string")
 
-    window_start, window_end = processing_window(ingested_at)
+    first_seen = first_seen_at(ingested_at)
     accepted = []
     rejected = []
 
     for index, record in enumerate(payload):
         try:
-            transformed, observed_at = transform_record(record, source_region)
-            if window_start <= observed_at < window_end:
-                accepted.append(transformed)
+            transformed, _ = transform_record(record, source_region)
+            transformed["first_seen_at"] = first_seen
+            accepted.append(transformed)
         except InvalidRecord as error:
             rejected.append({"index": index, "reason": str(error)})
 
     return {
-        "window_start": window_start.isoformat().replace("+00:00", "Z"),
-        "window_end": window_end.isoformat().replace("+00:00", "Z"),
+        "first_seen_at": first_seen,
         "accepted": accepted,
         "rejected": rejected,
     }
@@ -306,28 +342,39 @@ def process_s3_record(event_record):
     result = process_payload(payload, source_region, ingested_at)
     table_name = sightings_table_name()
     persisted_records = 0
-    duplicate_records = 0
+    existing_records = 0
+    provenance_updated_records = 0
+    existing_regions_by_id = existing_source_regions(result["accepted"], table_name)
     for record in result["accepted"]:
-        if persist_sighting(record, table_name):
+        record_id = sighting_id(record)
+        source_regions = existing_regions_by_id.get(record_id)
+        if source_regions is None and persist_sighting(record, table_name):
             persisted_records += 1
+        elif source_regions is None:
+            persist_source_region(record, table_name)
+            provenance_updated_records += 1
+        elif record["source_region"] in source_regions:
+            existing_records += 1
         else:
-            duplicate_records += 1
+            persist_source_region(record, table_name)
+            provenance_updated_records += 1
 
     result["persisted_records"] = persisted_records
-    result["duplicate_records"] = duplicate_records
+    result["existing_records"] = existing_records
+    result["provenance_updated_records"] = provenance_updated_records
     print(
         json.dumps(
             {
                 "event": "processing_completed",
                 "bucket": bucket_name,
                 "object": object_key,
-                "window_start": result["window_start"],
-                "window_end": result["window_end"],
+                "first_seen_at": result["first_seen_at"],
                 "accepted_records": len(result["accepted"]),
                 "rejected_records": len(result["rejected"]),
                 "rejection_reason_counts": rejection_reason_counts(result["rejected"]),
                 "persisted_records": persisted_records,
-                "duplicate_records": duplicate_records,
+                "existing_records": existing_records,
+                "provenance_updated_records": provenance_updated_records,
             }
         )
     )
@@ -345,5 +392,8 @@ def lambda_handler(event, context):
         "accepted_records": sum(len(result["accepted"]) for result in results),
         "rejected_records": sum(len(result["rejected"]) for result in results),
         "persisted_records": sum(result["persisted_records"] for result in results),
-        "duplicate_records": sum(result["duplicate_records"] for result in results),
+        "existing_records": sum(result["existing_records"] for result in results),
+        "provenance_updated_records": sum(
+            result["provenance_updated_records"] for result in results
+        ),
     }

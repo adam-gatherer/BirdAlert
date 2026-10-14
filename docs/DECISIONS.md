@@ -18,7 +18,19 @@ Rationale: the UK notable-feed test run contained predominantly provisional reco
 
 Private-location exclusion remains unchanged: `locationPrivate: true` records are never persisted or exposed. The change is intentionally limited to eBird's validation marker, not contributor privacy.
 
-The processor now accepts eBird timestamps with minute or second precision. Date-only timestamps remain rejected because they cannot be assigned safely to a 15-minute processing window.
+The processor now accepts eBird timestamps with minute or second precision. Date-only timestamps remain rejected in Phase 1 because they cannot be sorted or presented with a truthful observation time; their treatment is deferred for later design.
+
+## 2026-10-14 - First-seen ingestion from overlapping eBird snapshots
+
+Accepted and implemented locally. EventBridge continues to invoke the poller every 15 minutes and eBird continues to return the preceding 24 hours. The processor validates every snapshot but persists a well-formed non-private sighting only when its canonical identity has not previously been recorded by BirdAlert. The canonical DynamoDB item records the raw-object ingestion time as `first_seen_at`; public query records continue to sort by the actual `observed_at` timestamp.
+
+Before writing, the processor uses DynamoDB `BatchGetItem` to identify canonical sightings already present, then conditionally transaction-writes only new canonical and query records. The conditional write remains the concurrency safeguard. If an already-known sighting arrives through a new eBird source region, the processor updates its provenance and the two region-specific query records without rewriting the global latest or species records.
+
+Rationale: eBird reports can be submitted long after their observation time, so filtering the 24-hour response to the last 15 minutes excluded most public sightings and made the application appear stale. First-seen ingestion captures those reports while preserving the EventBridge heartbeat, Lambda and S3 event-driven flow that demonstrates the intended AWS architecture. Batch identity reads keep overlapping snapshots from causing repeated transactional writes, reducing DynamoDB cost without adding a cache, service, or operational burden. `first_seen_at` preserves an operational audit trail while `observed_at` remains the truthful user-facing ordering.
+
+Privacy is unchanged: `locationPrivate: true` records remain excluded before any internal persistence, and date-only timestamps remain outside Phase 1 until their product treatment is explicitly designed.
+
+The processor Lambda timeout is set to 180 seconds. This protects the first execution, when a full 24-hour snapshot can legitimately introduce many canonical sightings, while preserving pay-for-use Lambda billing; it does not reserve capacity or make normal quick invocations cost more.
 
 ## 2026-10-14 - Region means eBird poll source region
 
@@ -42,7 +54,7 @@ Rationale: BirdAlert is UK-first, so human-facing date queries should align with
 
 ## 2026-10-14 - Canonical sightings and DynamoDB query records
 
-Accepted and implemented locally. DynamoDB retains one canonical record per unique sighting. Small query records with timestamp sort keys support the latest, region, species, and region-plus-species access patterns. They contain only fields required to answer the corresponding read request and never copy a raw eBird payload. A single `query-by-key` global secondary index uses query keys `LATEST`, `REGION#{region}`, `SPECIES#{species}`, and `REGION#{region}#SPECIES#{species}`; its timestamp-prefixed sort key makes reverse-order DynamoDB queries efficient. The processor transaction conditionally creates the canonical record with its query records. A duplicate adds newly observed provenance and writes that source region's query records.
+Accepted and implemented locally. DynamoDB retains one canonical record per unique sighting. Small query records with timestamp sort keys support the latest, region, species, and region-plus-species access patterns. They contain only fields required to answer the corresponding read request and never copy a raw eBird payload. A single `query-by-key` global secondary index uses query keys `LATEST`, `REGION#{region}`, `SPECIES#{species}`, and `REGION#{region}#SPECIES#{species}`; its timestamp-prefixed sort key makes reverse-order DynamoDB queries efficient. The processor batch-checks canonical identities, conditionally creates the canonical record with its four query records only when first seen, and skips a repeat from an existing source region. A duplicate from a new source region updates provenance and only that region's two query records.
 
 Rationale: the canonical record is the authoritative stored sighting. Purpose-built query records make the public API's bounded reads predictable and avoid costly table scans or a separate cache. The exact key shape, transactional write strategy, cursor encoding, and response projection remain Milestone 5 implementation details.
 

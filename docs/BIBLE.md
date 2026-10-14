@@ -17,7 +17,7 @@ Implement the complete ingestion, read API, and simple homepage:
 - A 15-minute heartbeat polls configured eBird regions. Deployment configuration supplies one or more valid eBird region codes; development may use `GB-ENG`. Do not assume or embed a definitive deployment region list.
 - eBird provides the previous 24 hours of UK sightings. Each poll stores the complete raw response in one S3 bucket, under a region-based prefix.
 - S3 is the raw landing area. The current lifecycle configuration retains raw data for one day; this remains a deployment/configuration choice, not an immutable architecture constraint.
-- Processing extracts sightings relevant to the current 15-minute processing window from the 24-hour response. It must not copy the entire response into the master database.
+- Processing validates each 24-hour response and persists a non-private sighting only when BirdAlert first sees its canonical identity. The 15-minute EventBridge cadence remains the ingestion heartbeat; it is not an observation-time filter. It must not copy the entire response into the master database.
 - Validate record shape and process well-formed records, rejecting malformed data and deduplicating so the master database contains only unique sightings. Retain eBird records with `obsValid: false` as `provisional`; do not present them as validated sightings.
 - Exclude entire sightings marked `locationPrivate: true` from the internal model and DynamoDB, rather than retaining redacted sightings. Respect volunteer privacy; complete raw responses remain in the private S3 landing area for their configured retention period.
 - Store the application fields needed for sightings, including at minimum bird/species, sighting timestamp, and sighting location. Keep the full raw payload in S3 rather than duplicating it unnecessarily in the master database.
@@ -31,13 +31,13 @@ Implement the complete ingestion, read API, and simple homepage:
 
 ## High-level data flow
 
-EventBridge 15-minute heartbeat -> Poll Lambda -> eBird API (previous 24 hours) -> S3 raw response -> extract current 15-minute slice -> validation, processing and deduplication -> master database -> API Gateway -> read Lambda -> client/homepage.
+EventBridge 15-minute heartbeat -> Poll Lambda -> eBird API (previous 24 hours) -> S3 raw response -> validation -> first-seen deduplication -> master database -> API Gateway -> read Lambda -> client/homepage.
 
 The exact processor invocation mechanism and database access pattern are implementation decisions for their roadmap milestones.
 
 ## AWS and data
 
-Use EventBridge, Lambda, S3, DynamoDB, API Gateway, IAM, CloudWatch, Parameter Store, and Terraform. DynamoDB is the intended master database and should be designed for application queries. Store one canonical item per sighting plus small, purpose-built query items with timestamp sort keys for latest, region, species, and region-plus-species lookups. These query items contain only the fields needed to answer their access pattern and must not duplicate the raw eBird payload.
+Use EventBridge, Lambda, S3, DynamoDB, API Gateway, IAM, CloudWatch, Parameter Store, and Terraform. DynamoDB is the intended master database and should be designed for application queries. Store one canonical item per sighting plus small, purpose-built query items with timestamp sort keys for latest, region, species, and region-plus-species lookups. The canonical item records `first_seen_at`, the raw-object ingestion time at which BirdAlert first encountered the sighting; query items remain sorted by `observed_at` for user-facing recency. These query items contain only the fields needed to answer their access pattern and must not duplicate the raw eBird payload.
 
 The S3 lifecycle should expire old raw dumps. The current configured retention is one day, subject to deployment configuration.
 
@@ -71,7 +71,7 @@ Analytics, AI product features, mobile applications, advanced administration, so
 
 1. Terraform foundation.
 2. Ingestion and 15-minute heartbeat.
-3. Raw response retention, current-window extraction, validation, transformation, and deduplication.
+3. Raw response retention, first-seen ingestion, validation, transformation, and deduplication.
 4. Master database and read API.
 5. Simple public homepage.
 6. Phase 2: Cognito users and species/region watchlists.

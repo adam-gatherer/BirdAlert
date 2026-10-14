@@ -70,6 +70,7 @@ module "processor_lambda" {
   filename      = "../../build/processor.zip"
   handler       = "app.lambda_handler"
   runtime       = "python3.13"
+  timeout       = 180
 
   environment_variables = {
     SIGHTINGS_TABLE = module.sightings_table.table_name

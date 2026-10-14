@@ -48,21 +48,15 @@ class ProcessorTests(unittest.TestCase):
     def setUp(self):
         self.app.s3 = Mock()
         self.app.dynamodb = Mock()
+        self.app.dynamodb.batch_get_item.return_value = {
+            "Responses": {},
+            "UnprocessedKeys": {},
+        }
 
-    def test_processing_window_uses_previous_utc_quarter_hour(self):
-        start, end = self.app.processing_window(
-            datetime(2026, 9, 30, 10, 17, 42, tzinfo=UTC)
-        )
-
-        self.assertEqual(start, datetime(2026, 9, 30, 10, 0, tzinfo=UTC))
-        self.assertEqual(end, datetime(2026, 9, 30, 10, 15, tzinfo=UTC))
-
-    def test_window_is_start_inclusive_and_end_exclusive(self):
+    def test_first_seen_ingestion_accepts_well_formed_records_outside_heartbeat_interval(self):
         payload = [
-            valid_record(obsDt="2026-09-30 11:00", speciesCode="start"),
-            valid_record(obsDt="2026-09-30 11:14", speciesCode="inside"),
-            valid_record(obsDt="2026-09-30 11:15", speciesCode="end"),
-            valid_record(obsDt="2026-09-30 10:59", speciesCode="before"),
+            valid_record(obsDt="2026-09-30 08:00", speciesCode="earlier"),
+            valid_record(obsDt="2026-09-30 11:14", speciesCode="recent"),
         ]
 
         result = self.app.process_payload(
@@ -73,9 +67,10 @@ class ProcessorTests(unittest.TestCase):
 
         self.assertEqual(
             [record["species_code"] for record in result["accepted"]],
-            ["start", "inside"],
+            ["earlier", "recent"],
         )
-        self.assertEqual(result["accepted"][0]["observed_at"], "2026-09-30T10:00:00Z")
+        self.assertEqual(result["accepted"][0]["observed_at"], "2026-09-30T07:00:00Z")
+        self.assertEqual(result["accepted"][0]["first_seen_at"], "2026-09-30T10:17:00Z")
         self.assertEqual(result["rejected"], [])
 
     def test_transformation_keeps_only_internal_fields(self):
@@ -104,6 +99,8 @@ class ProcessorTests(unittest.TestCase):
     def test_sighting_identity_is_independent_of_source_region(self):
         record, _ = self.app.transform_record(valid_record(), "GB-ENG")
         other_region_record, _ = self.app.transform_record(valid_record(), "GB-SCT")
+        record["first_seen_at"] = "2026-09-30T10:17:00Z"
+        other_region_record["first_seen_at"] = "2026-09-30T10:17:00Z"
 
         item = self.app.dynamodb_item(record)
 
@@ -115,6 +112,7 @@ class ProcessorTests(unittest.TestCase):
 
     def test_query_records_cover_every_supported_lookup(self):
         record, _ = self.app.transform_record(valid_record(), "GB-ENG")
+        record["first_seen_at"] = "2026-09-30T10:17:00Z"
         canonical_id = self.app.sighting_id(record)
 
         self.assertEqual(
@@ -137,6 +135,7 @@ class ProcessorTests(unittest.TestCase):
         )
         self.assertNotIn("submission_id", item)
         self.assertNotIn("source_regions", item)
+        self.assertNotIn("first_seen_at", item)
         self.assertEqual(item["validation_status"], {"S": "validated"})
 
     @patch.dict(os.environ, {"SIGHTINGS_TABLE": "birdalert-sightings"}, clear=True)
@@ -214,12 +213,14 @@ class ProcessorTests(unittest.TestCase):
         record, _ = self.app.transform_record(
             valid_record(locationPrivate=False), "GB-ENG"
         )
+        record["first_seen_at"] = "2026-09-30T10:17:00Z"
 
         item = self.app.dynamodb_item(record)
 
         self.assertEqual(item["location_id"], {"S": "L27886431"})
         self.assertEqual(item["latitude"], {"N": "41.8958333"})
         self.assertEqual(item["longitude"], {"N": "-76.21875"})
+        self.assertEqual(item["first_seen_at"], {"S": "2026-09-30T10:17:00Z"})
 
     def test_duplicate_write_is_an_idempotent_success(self):
         class DuplicateError(Exception):
@@ -229,7 +230,8 @@ class ProcessorTests(unittest.TestCase):
             }
 
         record, _ = self.app.transform_record(valid_record(), "GB-ENG")
-        self.app.dynamodb.transact_write_items.side_effect = [DuplicateError(), None]
+        record["first_seen_at"] = "2026-09-30T10:17:00Z"
+        self.app.dynamodb.transact_write_items.side_effect = DuplicateError()
 
         persisted = self.app.persist_sighting(record, "birdalert-sightings")
 
@@ -239,16 +241,79 @@ class ProcessorTests(unittest.TestCase):
             first_transaction.kwargs["TransactItems"][0]["Put"]["ConditionExpression"],
             "attribute_not_exists(sighting_id)",
         )
-        retry_transaction = self.app.dynamodb.transact_write_items.call_args_list[1]
-        self.assertEqual(
-            retry_transaction.kwargs["TransactItems"][0]["Update"],
-            {
-                "TableName": "birdalert-sightings",
-                "Key": {"sighting_id": self.app.dynamodb_item(record)["sighting_id"]},
-                "UpdateExpression": "ADD source_regions :source_region",
-                "ExpressionAttributeValues": {":source_region": {"SS": ["GB-ENG"]}},
+        self.app.dynamodb.transact_write_items.assert_called_once()
+
+    @patch.dict(os.environ, {"SIGHTINGS_TABLE": "birdalert-sightings"}, clear=True)
+    def test_existing_sighting_is_not_written_again_for_the_same_source_region(self):
+        record = valid_record()
+        transformed = self.app.process_payload(
+            [record], "GB-ENG", datetime(2026, 9, 30, 10, 17, tzinfo=UTC)
+        )["accepted"][0]
+        record_id = self.app.sighting_id(transformed)
+        self.app.s3.get_object.return_value = {
+            "Body": io.BytesIO(json.dumps([record]).encode("utf-8"))
+        }
+        self.app.dynamodb.batch_get_item.return_value = {
+            "Responses": {
+                "birdalert-sightings": [
+                    {
+                        "sighting_id": {"S": record_id},
+                        "source_regions": {"SS": ["GB-ENG"]},
+                    }
+                ]
             },
+            "UnprocessedKeys": {},
+        }
+
+        result = self.app.process_s3_record(
+            {
+                "s3": {
+                    "bucket": {"name": "birdalert-raw"},
+                    "object": {"key": "GB-ENG/20260930T101700.000000Z-test.json"},
+                }
+            }
         )
+
+        self.assertEqual(result["existing_records"], 1)
+        self.assertEqual(result["persisted_records"], 0)
+        self.app.dynamodb.transact_write_items.assert_not_called()
+
+    @patch.dict(os.environ, {"SIGHTINGS_TABLE": "birdalert-sightings"}, clear=True)
+    def test_new_source_region_updates_provenance_and_region_query_records(self):
+        record = valid_record()
+        transformed = self.app.process_payload(
+            [record], "GB-SCT", datetime(2026, 9, 30, 10, 17, tzinfo=UTC)
+        )["accepted"][0]
+        record_id = self.app.sighting_id(transformed)
+        self.app.s3.get_object.return_value = {
+            "Body": io.BytesIO(json.dumps([record]).encode("utf-8"))
+        }
+        self.app.dynamodb.batch_get_item.return_value = {
+            "Responses": {
+                "birdalert-sightings": [
+                    {
+                        "sighting_id": {"S": record_id},
+                        "source_regions": {"SS": ["GB-ENG"]},
+                    }
+                ]
+            },
+            "UnprocessedKeys": {},
+        }
+
+        with patch.object(self.app, "raw_object_context", return_value=("GB-SCT", datetime(2026, 9, 30, 10, 17, tzinfo=UTC))):
+            result = self.app.process_s3_record(
+                {
+                    "s3": {
+                        "bucket": {"name": "birdalert-raw"},
+                        "object": {"key": "GB-ENG/20260930T101700.000000Z-test.json"},
+                    }
+                }
+            )
+
+        self.assertEqual(result["provenance_updated_records"], 1)
+        transaction = self.app.dynamodb.transact_write_items.call_args.kwargs["TransactItems"]
+        self.assertEqual(transaction[0]["Update"]["ConditionExpression"], "attribute_exists(sighting_id)")
+        self.assertEqual(len(transaction), 3)
 
     def test_incomplete_and_invalid_records_are_rejected(self):
         missing_privacy_record = valid_record()
@@ -256,6 +321,7 @@ class ProcessorTests(unittest.TestCase):
         invalid_records = [
             valid_record(comName=""),
             valid_record(obsDt="not-a-time"),
+            valid_record(obsDt="2026-09-30"),
             valid_record(lat=91),
             valid_record(lng=-181),
             valid_record(obsValid="yes"),
@@ -333,7 +399,8 @@ class ProcessorTests(unittest.TestCase):
                 "accepted_records": 1,
                 "rejected_records": 0,
                 "persisted_records": 1,
-                "duplicate_records": 0,
+                "existing_records": 0,
+                "provenance_updated_records": 0,
             },
         )
 

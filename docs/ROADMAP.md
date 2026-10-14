@@ -8,7 +8,7 @@ The Bible's roadmap places the basic frontend at Sprint 5. It is included in the
 
 ## Current repository state
 
-Implemented in repository code/configuration: Milestone 1 configuration-driven polling, poller Lambda, eBird API request, SSM lookup, raw S3 write, supporting IAM and Terraform modules, Terraform remote-state bootstrap, and Milestone 2 scheduling/retention. Milestone 3 has S3-triggered processing, previous-15-minute window extraction, validation, and transformation. Milestone 4 persists accepted records to DynamoDB with conditional writes; a SHA-256 hash of submission ID and species code provides idempotency and deduplication, source regions are retained as provenance, entire private sightings are excluded, and otherwise well-formed unvalidated eBird records are marked provisional. Milestone 5 adds the public read API, database-aware health endpoint, timestamp-sorted query records, bounded cursor pagination, UK date conversion, and configurable API throttles. This does not confirm deployment to AWS.
+Implemented in repository code/configuration: Milestone 1 configuration-driven polling, poller Lambda, eBird API request, SSM lookup, raw S3 write, supporting IAM and Terraform modules, Terraform remote-state bootstrap, and Milestone 2 scheduling/retention. Milestone 3 has S3-triggered first-seen processing of 24-hour snapshots, validation, and transformation. Milestone 4 persists accepted records to DynamoDB with conditional writes; a SHA-256 hash of submission ID and species code provides idempotency and deduplication, batch identity checks avoid repeat transactional writes, source regions are retained as provenance, entire private sightings are excluded, and otherwise well-formed unvalidated eBird records are marked provisional. Milestone 5 adds the public read API, database-aware health endpoint, timestamp-sorted query records, bounded cursor pagination, UK date conversion, and configurable API throttles. This does not confirm deployment to AWS.
 
 Not implemented: homepage or explicit retry/failure handling. Processor logs already provide safe aggregate validation-rejection reasons; broader operational hardening remains Milestone 7.
 
@@ -36,13 +36,14 @@ Acceptance: configuration supports one and multiple regions; dev continues to us
 - Add configurable S3 lifecycle expiry. One day is the current configured retention, not an immutable architecture constraint.
 - Verify behavior without deploying or modifying production infrastructure.
 
-## Milestone 3 - Processing window and validation (implemented in repository; not deployed)
+## Milestone 3 - First-seen processing and validation (implemented in repository; not deployed)
 
-- Extract only sightings relevant to the current 15-minute processing window from the 24-hour response.
+- Treat the 15-minute EventBridge schedule as an ingestion heartbeat, not an observation-time filter.
+- Validate each 24-hour response and accept a well-formed non-private sighting when BirdAlert first sees its canonical identity.
 - Define the minimum internal sighting fields: species, sighting timestamp, and location.
 - Validate external record shape and reject malformed records from the internal model. Retain well-formed `obsValid: false` eBird records as provisional, with their validation status persisted and returned by the read API.
 - Keep full raw payloads in S3; do not copy the whole response into the master database.
-- Add focused tests for window selection, boundaries, and invalid records.
+- Add focused tests for first-seen processing, repeat snapshots, and invalid records.
 
 ## Milestone 4 - Deduplication and master database (implemented in repository; not deployed)
 
