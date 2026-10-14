@@ -30,8 +30,10 @@ Accepted for Milestone 5; not implemented. The health endpoint must verify that 
 
 Rationale: function liveness alone can report success while the application's database access is broken, which is misleading during troubleshooting. The check reports database accessibility; ingestion freshness is a separate concern. Exact response shape and status codes remain pending the API discussion.
 
-## 2026-10-14 - Raw bucket naming proposal
+## 2026-10-14 - Raw bucket naming suffix
 
-Pending human confirmation. The raw bucket currently derives its name from project/environment, with no random suffix. The Terraform state bootstrap uses a separate six-character hexadecimal suffix.
+Accepted and implemented locally. The raw bucket name now includes a stable Terraform-generated eight-character hexadecimal suffix. The suffix is created once and retained in Terraform state, so dependent configuration receives a consistent bucket name.
 
-The proposed raw bucket name includes a stable Terraform-generated eight-character lowercase alphanumeric suffix to reduce global S3 naming collisions. Randomness reduces collision risk rather than guaranteeing availability. Changing the name of an existing bucket requires replacement; a plan must be reviewed before applying any such change. No naming change is included in this work.
+Rationale: S3 bucket names occupy a global namespace. The suffix substantially reduces naming-collision risk while retaining meaningful project and environment components. It does not guarantee availability.
+
+The raw bucket module's outputs supply its resulting name and ARN to the poller, processor, IAM policies, and S3 notification resources. The established Terraform state bucket retains its existing six-character suffix because changing the backend bucket would require replacement and state migration. Applying this raw-bucket change to an existing environment will replace that bucket; review the Terraform plan before applying.

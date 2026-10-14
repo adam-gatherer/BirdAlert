@@ -1,8 +1,13 @@
+# Stable eight-character suffix prevents global S3 naming collisions.
+resource "random_id" "raw_bucket_suffix" {
+  byte_length = 4
+}
+
 # creates the raw bucket for dumping API data
 module "raw_bucket" {
   source = "../modules/s3"
 
-  bucket_name    = "${local.name_prefix}-raw"
+  bucket_name    = "${local.name_prefix}-raw-${random_id.raw_bucket_suffix.hex}"
   retention_days = var.raw_retention_days
 }
 

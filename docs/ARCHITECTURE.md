@@ -83,7 +83,7 @@ Focused tests cover poller configuration/failure/key behavior, processor handlin
 
 - The dev tfvars configures `GB-ENG`; deployment region values are not hard-coded in application code.
 - The root Terraform backend has a fixed dev state key despite dev and prod variable files.
-- The raw bucket currently uses a fixed name (`birdalert-dev-raw` in development) without a random suffix. A stable Terraform-generated eight-character lowercase alphanumeric suffix is proposed, pending human confirmation; changing an existing bucket name requires replacement and plan review.
+- The raw bucket name includes a stable Terraform-generated eight-character hexadecimal suffix to reduce global S3 naming collisions. Terraform module outputs supply the resulting name and ARN to dependent Lambda configuration, IAM policies, and S3 notification resources. The established remote-state bucket retains its existing six-character suffix because changing the backend bucket would require replacement and state migration.
 - The README describes capabilities that are not yet implemented.
 
 These are known gaps, not reasons to redesign the product. See `docs/ROADMAP.md` for milestones.
