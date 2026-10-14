@@ -104,6 +104,31 @@ class ProcessorTests(unittest.TestCase):
         )
         self.assertEqual(item["source_regions"], {"SS": ["GB-ENG"]})
 
+    def test_query_records_cover_every_supported_lookup(self):
+        record, _ = self.app.transform_record(valid_record(), "GB-ENG")
+        canonical_id = self.app.sighting_id(record)
+
+        self.assertEqual(
+            self.app.query_keys(record),
+            [
+                "LATEST",
+                "REGION#GB-ENG",
+                "SPECIES#rebwoo",
+                "REGION#GB-ENG#SPECIES#rebwoo",
+            ],
+        )
+        item = self.app.query_item(record, "REGION#GB-ENG#SPECIES#rebwoo")
+        self.assertEqual(
+            item["sighting_id"],
+            {"S": f"QUERY#REGION#GB-ENG#SPECIES#rebwoo#{canonical_id}"},
+        )
+        self.assertEqual(
+            item["query_sort"],
+            {"S": f"2026-09-30T10:05:00Z#{canonical_id}"},
+        )
+        self.assertNotIn("submission_id", item)
+        self.assertNotIn("source_regions", item)
+
     @patch.dict(os.environ, {"SIGHTINGS_TABLE": "birdalert-sightings"}, clear=True)
     def test_handler_excludes_private_records_before_dynamodb_writes(self):
         payload = [valid_record(locationPrivate=True), valid_record()]
@@ -127,10 +152,9 @@ class ProcessorTests(unittest.TestCase):
         self.assertEqual(result["accepted_records"], 1)
         self.assertEqual(result["rejected_records"], 1)
         self.assertEqual(result["persisted_records"], 1)
-        self.app.dynamodb.put_item.assert_called_once()
-        item = self.app.dynamodb.put_item.call_args.kwargs["Item"]
+        self.app.dynamodb.transact_write_items.assert_called_once()
+        item = self.app.dynamodb.transact_write_items.call_args.kwargs["TransactItems"][0]["Put"]["Item"]
         self.assertEqual(item["location_private"], {"BOOL": False})
-        self.app.dynamodb.update_item.assert_not_called()
         self.app.s3.put_object.assert_not_called()
 
     def test_persistence_guard_prevents_private_location_writes(self):
@@ -142,8 +166,7 @@ class ProcessorTests(unittest.TestCase):
                 with self.assertRaisesRegex(self.app.InvalidRecord, "cannot be persisted"):
                     self.app.persist_sighting(record, "birdalert-sightings")
 
-        self.app.dynamodb.put_item.assert_not_called()
-        self.app.dynamodb.update_item.assert_not_called()
+        self.app.dynamodb.transact_write_items.assert_not_called()
 
     def test_dynamodb_item_keeps_non_private_location(self):
         record, _ = self.app.transform_record(
@@ -158,23 +181,31 @@ class ProcessorTests(unittest.TestCase):
 
     def test_duplicate_write_is_an_idempotent_success(self):
         class DuplicateError(Exception):
-            response = {"Error": {"Code": "ConditionalCheckFailedException"}}
+            response = {
+                "Error": {"Code": "TransactionCanceledException"},
+                "CancellationReasons": [{"Code": "ConditionalCheckFailed"}],
+            }
 
         record, _ = self.app.transform_record(valid_record(), "GB-ENG")
-        self.app.dynamodb.put_item.side_effect = DuplicateError()
+        self.app.dynamodb.transact_write_items.side_effect = [DuplicateError(), None]
 
         persisted = self.app.persist_sighting(record, "birdalert-sightings")
 
         self.assertFalse(persisted)
+        first_transaction = self.app.dynamodb.transact_write_items.call_args_list[0]
         self.assertEqual(
-            self.app.dynamodb.put_item.call_args.kwargs["ConditionExpression"],
+            first_transaction.kwargs["TransactItems"][0]["Put"]["ConditionExpression"],
             "attribute_not_exists(sighting_id)",
         )
-        self.app.dynamodb.update_item.assert_called_once_with(
-            TableName="birdalert-sightings",
-            Key={"sighting_id": self.app.dynamodb_item(record)["sighting_id"]},
-            UpdateExpression="ADD source_regions :source_region",
-            ExpressionAttributeValues={":source_region": {"SS": ["GB-ENG"]}},
+        retry_transaction = self.app.dynamodb.transact_write_items.call_args_list[1]
+        self.assertEqual(
+            retry_transaction.kwargs["TransactItems"][0]["Update"],
+            {
+                "TableName": "birdalert-sightings",
+                "Key": {"sighting_id": self.app.dynamodb_item(record)["sighting_id"]},
+                "UpdateExpression": "ADD source_regions :source_region",
+                "ExpressionAttributeValues": {":source_region": {"SS": ["GB-ENG"]}},
+            },
         )
 
     def test_incomplete_and_invalid_records_are_rejected(self):
@@ -252,7 +283,7 @@ class ProcessorTests(unittest.TestCase):
         self.app.s3.get_object.assert_called_once_with(
             Bucket="birdalert-raw", Key=object_key
         )
-        self.app.dynamodb.put_item.assert_called_once()
+        self.app.dynamodb.transact_write_items.assert_called_once()
         self.assertEqual(
             result,
             {
@@ -268,7 +299,7 @@ class ProcessorTests(unittest.TestCase):
         self.app.s3.get_object.return_value = {
             "Body": io.BytesIO(json.dumps([valid_record()]).encode("utf-8"))
         }
-        self.app.dynamodb.put_item.side_effect = RuntimeError("DynamoDB unavailable")
+        self.app.dynamodb.transact_write_items.side_effect = RuntimeError("DynamoDB unavailable")
 
         with patch.dict(os.environ, {"SIGHTINGS_TABLE": "birdalert-sightings"}, clear=True):
             with self.assertRaisesRegex(RuntimeError, "DynamoDB unavailable"):

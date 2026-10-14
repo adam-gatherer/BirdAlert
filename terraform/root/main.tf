@@ -90,6 +90,41 @@ module "processor_iam" {
   sightings_table_arn = module.sightings_table.table_arn
 }
 
+# Serves bounded public read requests from DynamoDB; it never reads raw S3 data.
+module "read_lambda" {
+  source = "../modules/lambda"
+
+  function_name = "${local.name_prefix}-read"
+  role_arn      = module.read_iam.role_arn
+  filename      = "../../build/read.zip"
+  handler       = "app.lambda_handler"
+  runtime       = "python3.13"
+
+  environment_variables = {
+    SIGHTINGS_TABLE = module.sightings_table.table_name
+  }
+}
+
+module "read_iam" {
+  source = "../modules/read-iam"
+
+  role_name           = "${local.name_prefix}-read-role"
+  sightings_table_arn = module.sightings_table.table_arn
+}
+
+module "read_api" {
+  source = "../modules/http-api"
+
+  api_name                 = "${local.name_prefix}-read-api"
+  lambda_function_arn      = module.read_lambda.function_arn
+  lambda_function_name     = module.read_lambda.function_name
+  allowed_origins          = var.api_allowed_origins
+  sightings_throttle_rate  = var.sightings_throttle_rate
+  sightings_throttle_burst = var.sightings_throttle_burst
+  health_throttle_rate     = var.health_throttle_rate
+  health_throttle_burst    = var.health_throttle_burst
+}
+
 module "raw_object_processor" {
   source = "../modules/s3-lambda-notification"
 

@@ -43,3 +43,58 @@ variable "ebird_api_key" {
   type        = string
   sensitive   = true
 }
+
+variable "api_allowed_origins" {
+  description = "Browser origins allowed to call the public read API."
+  type        = list(string)
+  default     = ["*"]
+
+  validation {
+    condition     = length(var.api_allowed_origins) > 0
+    error_message = "api_allowed_origins must contain at least one origin."
+  }
+}
+
+variable "sightings_throttle_rate" {
+  description = "Sustained requests per second for GET /sightings."
+  type        = number
+  default     = 2
+
+  validation {
+    condition     = var.sightings_throttle_rate > 0
+    error_message = "sightings_throttle_rate must be greater than zero."
+  }
+}
+
+variable "sightings_throttle_burst" {
+  description = "Burst requests allowed for GET /sightings."
+  type        = number
+  default     = 5
+
+  validation {
+    condition     = var.sightings_throttle_burst >= 1 && floor(var.sightings_throttle_burst) == var.sightings_throttle_burst
+    error_message = "sightings_throttle_burst must be a whole number of at least one."
+  }
+}
+
+variable "health_throttle_rate" {
+  description = "Sustained requests per second for GET /health."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.health_throttle_rate > 0
+    error_message = "health_throttle_rate must be greater than zero."
+  }
+}
+
+variable "health_throttle_burst" {
+  description = "Burst requests allowed for GET /health."
+  type        = number
+  default     = 2
+
+  validation {
+    condition     = var.health_throttle_burst >= 1 && floor(var.health_throttle_burst) == var.health_throttle_burst
+    error_message = "health_throttle_burst must be a whole number of at least one."
+  }
+}

@@ -151,31 +151,93 @@ def dynamodb_item(record):
     return item
 
 
+def query_keys(record):
+    region = record["source_region"]
+    species = record["species_code"]
+    return [
+        "LATEST",
+        f"REGION#{region}",
+        f"SPECIES#{species}",
+        f"REGION#{region}#SPECIES#{species}",
+    ]
+
+
+def query_item(record, query_key):
+    canonical_id = sighting_id(record)
+    canonical = dynamodb_item(record)
+    item = {
+        "sighting_id": {"S": f"QUERY#{query_key}#{canonical_id}"},
+        "query_key": {"S": query_key},
+        "query_sort": {"S": f"{record['observed_at']}#{canonical_id}"},
+        "canonical_sighting_id": {"S": canonical_id},
+    }
+    for field in (
+        "species_code",
+        "common_name",
+        "scientific_name",
+        "observed_at",
+        "location_id",
+        "location_name",
+        "latitude",
+        "longitude",
+        "count",
+    ):
+        if field in canonical:
+            item[field] = canonical[field]
+    return item
+
+
 def is_duplicate_error(error):
-    return (
-        getattr(error, "response", {})
-        .get("Error", {})
-        .get("Code")
-        == "ConditionalCheckFailedException"
+    response = getattr(error, "response", {})
+    error_code = response.get("Error", {}).get("Code")
+    if error_code == "ConditionalCheckFailedException":
+        return True
+    if error_code != "TransactionCanceledException":
+        return False
+    return any(
+        reason.get("Code") == "ConditionalCheckFailed"
+        for reason in response.get("CancellationReasons", [])
     )
 
 
 def persist_sighting(record, table_name):
+    canonical_item = dynamodb_item(record)
+    query_items = [query_item(record, key) for key in query_keys(record)]
     try:
-        dynamodb.put_item(
-            TableName=table_name,
-            Item=dynamodb_item(record),
-            ConditionExpression="attribute_not_exists(sighting_id)",
+        dynamodb.transact_write_items(
+            TransactItems=[
+                {
+                    "Put": {
+                        "TableName": table_name,
+                        "Item": canonical_item,
+                        "ConditionExpression": "attribute_not_exists(sighting_id)",
+                    }
+                },
+                *[
+                    {"Put": {"TableName": table_name, "Item": item}}
+                    for item in query_items
+                ],
+            ]
         )
     except Exception as error:
         if is_duplicate_error(error):
-            dynamodb.update_item(
-                TableName=table_name,
-                Key={"sighting_id": {"S": sighting_id(record)}},
-                UpdateExpression="ADD source_regions :source_region",
-                ExpressionAttributeValues={
-                    ":source_region": {"SS": [record["source_region"]]}
-                },
+            dynamodb.transact_write_items(
+                TransactItems=[
+                    {
+                        "Update": {
+                            "TableName": table_name,
+                            "Key": {"sighting_id": {"S": sighting_id(record)}},
+                            "UpdateExpression": "ADD source_regions :source_region",
+                            "ExpressionAttributeValues": {
+                                ":source_region": {"SS": [record["source_region"]]}
+                            },
+                        }
+                    },
+                    *[
+                        {"Put": {"TableName": table_name, "Item": item}}
+                        for item in query_items
+                    ],
+                ]
             )
             return False
         raise

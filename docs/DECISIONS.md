@@ -18,7 +18,7 @@ Rationale: using the source's region vocabulary keeps ingestion and retrieval co
 
 ## 2026-10-14 - App-focused public API with combined filters
 
-Accepted for Milestone 5; not implemented. The read API primarily serves BirdAlert's homepage using validated sightings accumulated in DynamoDB. It does not serve raw eBird dumps or poll eBird on each client request. The upstream 24-hour response window and raw S3 retention do not impose a 24-hour retention limit on processed DynamoDB sightings; the table currently has no expiry.
+Accepted and implemented locally. The read API primarily serves BirdAlert's homepage using validated sightings accumulated in DynamoDB. It does not serve raw eBird dumps or poll eBird on each client request. The upstream 24-hour response window and raw S3 retention do not impose a 24-hour retention limit on processed DynamoDB sightings; the table currently has no expiry.
 
 Region, species, and date filters may be combined. `GET /sightings` accepts optional `region`, `species`, `date`, `limit`, and `cursor` parameters. It returns 10 latest sightings by default and permits at most 50 records in one page. Species lookup means filtering sightings by eBird species code; a separate species catalogue is not part of Phase 1. Public unauthenticated access also allows direct requests from other clients, so app ownership cannot be enforced simply by hiding the endpoint or restricting browser CORS origins.
 
@@ -26,21 +26,21 @@ Rationale: combined filters support useful app queries while a 50-result maximum
 
 ## 2026-10-14 - UK calendar-date API filter
 
-Accepted for Milestone 5; not implemented. The `date` query parameter is ISO 8601 `YYYY-MM-DD` and selects a calendar day in `Europe/London`. DynamoDB retains timestamps in UTC, so the read Lambda will convert the start and end of the requested UK day to UTC before querying.
+Accepted and implemented locally. The `date` query parameter is ISO 8601 `YYYY-MM-DD` and selects a calendar day in `Europe/London`. DynamoDB retains timestamps in UTC, and the read Lambda converts the start and end of the requested UK day to UTC before querying.
 
 Rationale: BirdAlert is UK-first, so human-facing date queries should align with UK calendar days, including daylight-saving transitions. ISO `YYYY-MM-DD` is intentionally unambiguous across locales. Any future support for regional date/time semantics must be explicit, versioned or opt-in, and designed alongside international expansion; Phase 1 does not accept ambiguous US-style date inputs.
 
 ## 2026-10-14 - Canonical sightings and DynamoDB query records
 
-Accepted for Milestone 5; not implemented. DynamoDB retains one canonical record per unique sighting. Small query records with timestamp sort keys support the latest, region, species, and region-plus-species access patterns. They contain only fields required to answer the corresponding read request and never copy a raw eBird payload.
+Accepted and implemented locally. DynamoDB retains one canonical record per unique sighting. Small query records with timestamp sort keys support the latest, region, species, and region-plus-species access patterns. They contain only fields required to answer the corresponding read request and never copy a raw eBird payload. A single `query-by-key` global secondary index uses query keys `LATEST`, `REGION#{region}`, `SPECIES#{species}`, and `REGION#{region}#SPECIES#{species}`; its timestamp-prefixed sort key makes reverse-order DynamoDB queries efficient. The processor transaction conditionally creates the canonical record with its query records. A duplicate adds newly observed provenance and writes that source region's query records.
 
 Rationale: the canonical record is the authoritative stored sighting. Purpose-built query records make the public API's bounded reads predictable and avoid costly table scans or a separate cache. The exact key shape, transactional write strategy, cursor encoding, and response projection remain Milestone 5 implementation details.
 
 ## 2026-10-14 - Health verifies database access
 
-Accepted for Milestone 5; not implemented. The health endpoint must verify that the read function can reach and read from the master DynamoDB table using its normal credentials and permissions.
+Accepted and implemented locally. The health endpoint verifies that the read function can reach and read from the master DynamoDB table using its normal credentials and permissions.
 
-Rationale: function liveness alone can report success while the application's database access is broken, which is misleading during troubleshooting. The check reports database accessibility; ingestion freshness is a separate concern. Exact response shape and status codes remain pending the API discussion.
+Rationale: function liveness alone can report success while the application's database access is broken, which is misleading during troubleshooting. The check reports database accessibility; ingestion freshness is a separate concern. It returns `200` with database reachability after a successful lightweight `GetItem`, and `503` when that read fails.
 
 ## 2026-10-14 - Raw bucket naming suffix
 

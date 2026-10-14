@@ -8,9 +8,9 @@ The Bible's roadmap places the basic frontend at Sprint 5. It is included in the
 
 ## Current repository state
 
-Implemented in repository code/configuration: Milestone 1 configuration-driven polling, poller Lambda, eBird API request, SSM lookup, raw S3 write, supporting IAM and Terraform modules, Terraform remote-state bootstrap, and Milestone 2 scheduling/retention. Milestone 3 has S3-triggered processing, previous-15-minute window extraction, validation, and transformation. Milestone 4 persists accepted records to DynamoDB with conditional writes; a SHA-256 hash of submission ID and species code provides idempotency and deduplication, source regions are retained as provenance, and entire private sightings are excluded. This does not confirm deployment to AWS.
+Implemented in repository code/configuration: Milestone 1 configuration-driven polling, poller Lambda, eBird API request, SSM lookup, raw S3 write, supporting IAM and Terraform modules, Terraform remote-state bootstrap, and Milestone 2 scheduling/retention. Milestone 3 has S3-triggered processing, previous-15-minute window extraction, validation, and transformation. Milestone 4 persists accepted records to DynamoDB with conditional writes; a SHA-256 hash of submission ID and species code provides idempotency and deduplication, source regions are retained as provenance, and entire private sightings are excluded. Milestone 5 adds the public read API, database-aware health endpoint, timestamp-sorted query records, bounded cursor pagination, UK date conversion, and configurable API throttles. This does not confirm deployment to AWS.
 
-Not implemented: read API, homepage, structured logging, or explicit retry/failure handling.
+Not implemented: homepage, structured logging, or explicit retry/failure handling.
 
 The poller configuration interface is `EBIRD_REGIONS` (comma-separated region codes), `PARAMETER_NAME` (environment-specific SSM parameter name), and `RAW_BUCKET`. Terraform supplies these Lambda environment variables. `terraform/environments/dev.tfvars` configures `GB-ENG`; deployment-specific region values remain the deployer's responsibility.
 
@@ -51,7 +51,7 @@ Acceptance: configuration supports one and multiple regions; dev continues to us
 - Grant least-privilege access and test persistence/deduplication behavior.
 - Exclude private sightings entirely from DynamoDB, superseding the earlier redaction-only implementation; keep complete raw responses in private S3.
 
-## Milestone 5 - Read API
+## Milestone 5 - Read API (implemented in repository; not deployed)
 
 - Add API Gateway and a Lambda read function.
 - Provide recent sightings, species lookup, region lookup, and health endpoints; support retrieval by region, species, and date.
