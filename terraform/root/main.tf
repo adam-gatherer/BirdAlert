@@ -65,13 +65,24 @@ module "processor_lambda" {
   filename      = "../../build/processor.zip"
   handler       = "app.lambda_handler"
   runtime       = "python3.13"
+
+  environment_variables = {
+    SIGHTINGS_TABLE = module.sightings_table.table_name
+  }
+}
+
+module "sightings_table" {
+  source = "../modules/dynamodb"
+
+  table_name = "${local.name_prefix}-sightings"
 }
 
 module "processor_iam" {
   source = "../modules/processor-iam"
 
-  role_name  = "${local.name_prefix}-processor-role"
-  bucket_arn = module.raw_bucket.bucket_arn
+  role_name           = "${local.name_prefix}-processor-role"
+  bucket_arn          = module.raw_bucket.bucket_arn
+  sightings_table_arn = module.sightings_table.table_arn
 }
 
 module "raw_object_processor" {

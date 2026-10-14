@@ -60,13 +60,16 @@ Implemented in repository configuration/code:
 - S3-triggered processor Lambda with a raw-bucket read-only IAM role.
 - Previous-15-minute window extraction, external-record validation, and transformation into the internal sighting model.
 - Focused tests for processor window boundaries, invalid records, daylight-saving edge cases, and S3-event handling.
+- DynamoDB master table with on-demand billing, server-side encryption, and point-in-time recovery.
+- Conditional processor writes that make repeated deliveries idempotent and deduplicate by a SHA-256 hash of eBird submission ID and species code.
+- Source regions retained as provenance without participating in the sighting identity.
+- Redaction of private-location records before persistence; raw payloads remain in S3.
 
 Not implemented in the active configuration/code:
 
-- DynamoDB master database, persistence, deduplication, or idempotency.
 - Read API, API Gateway, latest-10 homepage, or frontend.
 
-Focused tests cover poller configuration/failure/key behavior and processor handling. API remains a placeholder area.
+Focused tests cover poller configuration/failure/key behavior, processor handling, persistence, deduplication, and private-location redaction. API remains a placeholder area.
 
 ## Known mismatches
 

@@ -1,6 +1,7 @@
 import importlib.util
 import io
 import json
+import os
 import sys
 import types
 import unittest
@@ -46,6 +47,7 @@ class ProcessorTests(unittest.TestCase):
 
     def setUp(self):
         self.app.s3 = Mock()
+        self.app.dynamodb = Mock()
 
     def test_processing_window_uses_previous_utc_quarter_hour(self):
         start, end = self.app.processing_window(
@@ -89,6 +91,54 @@ class ProcessorTests(unittest.TestCase):
         self.assertTrue(transformed["location_private"])
         self.assertNotIn("unneeded", transformed)
         self.assertNotIn("obsReviewed", transformed)
+
+    def test_dynamodb_item_redacts_private_location_and_has_stable_identity(self):
+        private_record, _ = self.app.transform_record(valid_record(), "GB-ENG")
+        other_region_record, _ = self.app.transform_record(valid_record(), "GB-SCT")
+
+        item = self.app.dynamodb_item(private_record)
+
+        self.assertEqual(
+            item["sighting_id"],
+            self.app.dynamodb_item(other_region_record)["sighting_id"],
+        )
+        self.assertEqual(item["location_name"], {"S": "Private location"})
+        self.assertEqual(item["source_regions"], {"SS": ["GB-ENG"]})
+        self.assertNotIn("location_id", item)
+        self.assertNotIn("latitude", item)
+        self.assertNotIn("longitude", item)
+
+    def test_dynamodb_item_keeps_non_private_location(self):
+        record, _ = self.app.transform_record(
+            valid_record(locationPrivate=False), "GB-ENG"
+        )
+
+        item = self.app.dynamodb_item(record)
+
+        self.assertEqual(item["location_id"], {"S": "L27886431"})
+        self.assertEqual(item["latitude"], {"N": "41.8958333"})
+        self.assertEqual(item["longitude"], {"N": "-76.21875"})
+
+    def test_duplicate_write_is_an_idempotent_success(self):
+        class DuplicateError(Exception):
+            response = {"Error": {"Code": "ConditionalCheckFailedException"}}
+
+        record, _ = self.app.transform_record(valid_record(), "GB-ENG")
+        self.app.dynamodb.put_item.side_effect = DuplicateError()
+
+        persisted = self.app.persist_sighting(record, "birdalert-sightings")
+
+        self.assertFalse(persisted)
+        self.assertEqual(
+            self.app.dynamodb.put_item.call_args.kwargs["ConditionExpression"],
+            "attribute_not_exists(sighting_id)",
+        )
+        self.app.dynamodb.update_item.assert_called_once_with(
+            TableName="birdalert-sightings",
+            Key={"sighting_id": self.app.dynamodb_item(record)["sighting_id"]},
+            UpdateExpression="ADD source_regions :source_region",
+            ExpressionAttributeValues={":source_region": {"SS": ["GB-ENG"]}},
+        )
 
     def test_incomplete_and_invalid_records_are_rejected(self):
         invalid_records = [
@@ -138,7 +188,8 @@ class ProcessorTests(unittest.TestCase):
                 datetime(2026, 9, 30, 10, 17, tzinfo=UTC),
             )
 
-    def test_handler_reads_url_encoded_s3_object_and_reports_counts(self):
+    @patch.dict(os.environ, {"SIGHTINGS_TABLE": "birdalert-sightings"}, clear=True)
+    def test_handler_reads_url_encoded_s3_object_and_persists_records(self):
         object_key = "GB-ENG/20260930T101700.000000Z-test id.json"
         self.app.s3.get_object.return_value = {
             "Body": io.BytesIO(json.dumps([valid_record()]).encode("utf-8"))
@@ -161,10 +212,36 @@ class ProcessorTests(unittest.TestCase):
         self.app.s3.get_object.assert_called_once_with(
             Bucket="birdalert-raw", Key=object_key
         )
+        self.app.dynamodb.put_item.assert_called_once()
         self.assertEqual(
             result,
-            {"processed_objects": 1, "accepted_records": 1, "rejected_records": 0},
+            {
+                "processed_objects": 1,
+                "accepted_records": 1,
+                "rejected_records": 0,
+                "persisted_records": 1,
+                "duplicate_records": 0,
+            },
         )
+
+    def test_persistence_failure_fails_processing(self):
+        self.app.s3.get_object.return_value = {
+            "Body": io.BytesIO(json.dumps([valid_record()]).encode("utf-8"))
+        }
+        self.app.dynamodb.put_item.side_effect = RuntimeError("DynamoDB unavailable")
+
+        with patch.dict(os.environ, {"SIGHTINGS_TABLE": "birdalert-sightings"}, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "DynamoDB unavailable"):
+                self.app.process_s3_record(
+                    {
+                        "s3": {
+                            "bucket": {"name": "birdalert-raw"},
+                            "object": {
+                                "key": "GB-ENG/20260930T101700.000000Z-test.json"
+                            },
+                        }
+                    }
+                )
 
     def test_malformed_key_json_and_event_fail_visibly(self):
         with self.assertRaisesRegex(ValueError, "unexpected format"):

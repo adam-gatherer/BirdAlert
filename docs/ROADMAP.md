@@ -8,9 +8,9 @@ The Bible's roadmap places the basic frontend at Sprint 5. It is included in the
 
 ## Current repository state
 
-Implemented in repository code/configuration: Milestone 1 configuration-driven polling, poller Lambda, eBird API request, SSM lookup, raw S3 write, supporting IAM and Terraform modules, Terraform remote-state bootstrap, and Milestone 2 scheduling/retention. Milestone 3 now has S3-triggered processing, previous-15-minute window extraction, validation, and transformation; processed records are not yet persisted. This does not confirm deployment to AWS.
+Implemented in repository code/configuration: Milestone 1 configuration-driven polling, poller Lambda, eBird API request, SSM lookup, raw S3 write, supporting IAM and Terraform modules, Terraform remote-state bootstrap, and Milestone 2 scheduling/retention. Milestone 3 has S3-triggered processing, previous-15-minute window extraction, validation, and transformation. Milestone 4 persists accepted records to DynamoDB with conditional writes; a SHA-256 hash of submission ID and species code provides idempotency and deduplication, source regions are retained as provenance, and private locations are redacted. This does not confirm deployment to AWS.
 
-Not implemented: deduplication/idempotency, DynamoDB master database, read API, homepage, structured logging, or explicit retry/failure handling.
+Not implemented: read API, homepage, structured logging, or explicit retry/failure handling.
 
 The poller configuration interface is `EBIRD_REGIONS` (comma-separated region codes), `PARAMETER_NAME` (environment-specific SSM parameter name), and `RAW_BUCKET`. Terraform supplies these Lambda environment variables. `terraform/environments/dev.tfvars` configures `GB-ENG`; deployment-specific region values remain the deployer's responsibility.
 
@@ -44,7 +44,7 @@ Acceptance: configuration supports one and multiple regions; dev continues to us
 - Keep full raw payloads in S3; do not copy the whole response into the master database.
 - Add focused tests for window selection, boundaries, and invalid records.
 
-## Milestone 4 - Deduplication and master database
+## Milestone 4 - Deduplication and master database (implemented in repository; not deployed)
 
 - Define how sightings are identified as unique and make processing idempotent.
 - Add the DynamoDB master database and persist only unique, valid processed sightings.

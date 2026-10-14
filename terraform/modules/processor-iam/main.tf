@@ -22,3 +22,13 @@ resource "aws_iam_role_policy_attachment" "raw_bucket_read" {
   role       = aws_iam_role.processor.name
   policy_arn = aws_iam_policy.raw_bucket_read.arn
 }
+
+resource "aws_iam_policy" "sightings_write" {
+  name   = "${var.role_name}-sightings-write"
+  policy = data.aws_iam_policy_document.sightings_write.json
+}
+
+resource "aws_iam_role_policy_attachment" "sightings_write" {
+  role       = aws_iam_role.processor.name
+  policy_arn = aws_iam_policy.sightings_write.arn
+}

@@ -1,4 +1,6 @@
+import hashlib
 import json
+import os
 import re
 from datetime import UTC, datetime, timedelta
 from urllib.parse import unquote_plus
@@ -8,6 +10,7 @@ import boto3
 
 
 s3 = boto3.client("s3")
+dynamodb = boto3.client("dynamodb")
 
 UK_TIMEZONE = ZoneInfo("Europe/London")
 RAW_KEY_PATTERN = re.compile(
@@ -116,6 +119,79 @@ def transform_record(record, source_region):
     return transformed, observed_at
 
 
+def sighting_id(record):
+    identity = f"{record['submission_id']}\x1f{record['species_code']}"
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()
+
+
+def dynamodb_item(record):
+    item = {
+        "sighting_id": {"S": sighting_id(record)},
+        "species_code": {"S": record["species_code"]},
+        "common_name": {"S": record["common_name"]},
+        "scientific_name": {"S": record["scientific_name"]},
+        "observed_at": {"S": record["observed_at"]},
+        "submission_id": {"S": record["submission_id"]},
+        "location_private": {"BOOL": record["location_private"]},
+        "source_regions": {"SS": [record["source_region"]]},
+    }
+
+    if record["location_private"]:
+        item["location_name"] = {"S": "Private location"}
+    else:
+        item.update(
+            {
+                "location_id": {"S": record["location_id"]},
+                "location_name": {"S": record["location_name"]},
+                "latitude": {"N": str(record["latitude"])},
+                "longitude": {"N": str(record["longitude"])},
+            }
+        )
+
+    if "count" in record:
+        item["count"] = {"N": str(record["count"])}
+
+    return item
+
+
+def is_duplicate_error(error):
+    return (
+        getattr(error, "response", {})
+        .get("Error", {})
+        .get("Code")
+        == "ConditionalCheckFailedException"
+    )
+
+
+def persist_sighting(record, table_name):
+    try:
+        dynamodb.put_item(
+            TableName=table_name,
+            Item=dynamodb_item(record),
+            ConditionExpression="attribute_not_exists(sighting_id)",
+        )
+    except Exception as error:
+        if is_duplicate_error(error):
+            dynamodb.update_item(
+                TableName=table_name,
+                Key={"sighting_id": {"S": sighting_id(record)}},
+                UpdateExpression="ADD source_regions :source_region",
+                ExpressionAttributeValues={
+                    ":source_region": {"SS": [record["source_region"]]}
+                },
+            )
+            return False
+        raise
+    return True
+
+
+def sightings_table_name():
+    table_name = os.environ.get("SIGHTINGS_TABLE", "").strip()
+    if not table_name:
+        raise ValueError("SIGHTINGS_TABLE must be configured")
+    return table_name
+
+
 def process_payload(payload, source_region, ingested_at):
     if not isinstance(payload, list):
         raise ValueError("Raw eBird response must be a JSON array")
@@ -154,6 +230,17 @@ def process_s3_record(event_record):
         raise ValueError(f"Raw object is not valid UTF-8 JSON: {object_key}") from error
 
     result = process_payload(payload, source_region, ingested_at)
+    table_name = sightings_table_name()
+    persisted_records = 0
+    duplicate_records = 0
+    for record in result["accepted"]:
+        if persist_sighting(record, table_name):
+            persisted_records += 1
+        else:
+            duplicate_records += 1
+
+    result["persisted_records"] = persisted_records
+    result["duplicate_records"] = duplicate_records
     print(
         json.dumps(
             {
@@ -164,6 +251,8 @@ def process_s3_record(event_record):
                 "window_end": result["window_end"],
                 "accepted_records": len(result["accepted"]),
                 "rejected_records": len(result["rejected"]),
+                "persisted_records": persisted_records,
+                "duplicate_records": duplicate_records,
             }
         )
     )
@@ -180,4 +269,6 @@ def lambda_handler(event, context):
         "processed_objects": len(results),
         "accepted_records": sum(len(result["accepted"]) for result in results),
         "rejected_records": sum(len(result["rejected"]) for result in results),
+        "persisted_records": sum(result["persisted_records"] for result in results),
+        "duplicate_records": sum(result["duplicate_records"] for result in results),
     }

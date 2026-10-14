@@ -30,3 +30,11 @@ data "aws_iam_policy_document" "raw_bucket_read" {
     resources = ["${var.bucket_arn}/*"]
   }
 }
+
+data "aws_iam_policy_document" "sightings_write" {
+  statement {
+    effect    = "Allow"
+    actions   = ["dynamodb:PutItem", "dynamodb:UpdateItem"]
+    resources = [var.sightings_table_arn]
+  }
+}
