@@ -46,6 +46,14 @@ Region, species, and date filters may be combined. `GET /sightings` accepts opti
 
 Rationale: combined filters support useful app queries while a 50-result maximum bounds DynamoDB work and response size. API Gateway starts at two requests per second with a burst of five for sightings, and one request per second with a burst of two for health. These Terraform-managed values can increase with observed demand. API Gateway throttles are best-effort targets, not guaranteed request ceilings or spending caps. No new protection service is selected here.
 
+## 2026-10-14 - Static homepage delivery and page-load-only data reads
+
+Accepted for Milestone 6 implementation. Plain static homepage assets will live in the repository's `site/` directory. Terraform will deploy them to a dedicated private S3 site bucket, and CloudFront will deliver them publicly using Origin Access Control. The raw-data bucket remains separate and inaccessible to CloudFront.
+
+The homepage will request `GET /sightings` once when a user opens the page. It will not poll in the background, and CloudFront will cache only static site assets rather than proxying or caching the API response. API Gateway, the read Lambda, and the bounded DynamoDB latest-sightings query remain the live data path. Terraform will configure the API CORS origin for the CloudFront site domain.
+
+Rationale: expected users will normally view the page briefly, so a scheduled client-side refresh would add requests without meaningful benefit. A single page-load request gives each visitor current data while keeping Lambda and DynamoDB interactions low. The existing bounded query and API throttles provide the appropriate low-cost protection at this stage. CloudFront reduces direct S3 asset reads and protects the site bucket without adding a second copy of dynamic sighting data or cache invalidation complexity.
+
 ## 2026-10-14 - UK calendar-date API filter
 
 Accepted and implemented locally. The `date` query parameter is ISO 8601 `YYYY-MM-DD` and selects a calendar day in `Europe/London`. DynamoDB retains timestamps in UTC, and the read Lambda converts the start and end of the requested UK day to UTC before querying.

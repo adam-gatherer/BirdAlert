@@ -19,20 +19,22 @@ EventBridge (15-minute heartbeat)
     -> DynamoDB master database (unique sightings)
     -> API Gateway
     -> read Lambda queries database per request
-    -> public homepage / API clients
+    -> browser / API clients
+
+CloudFront -> private S3 site bucket (Origin Access Control) -> browser
 ```
 
 The EventBridge schedule remains a 15-minute ingestion heartbeat, but the processor does not filter by the observation time in that interval. Each 24-hour response is validated, then a well-formed non-private sighting is persisted only when BirdAlert first sees its canonical identity. This captures public reports submitted after their observation time while avoiding repeated writes from overlapping eBird responses. Store the fields the application needs, at minimum species, sighting timestamp, location, validation status, and an internal `first_seen_at` ingestion timestamp on the canonical record. Keep the complete raw response in S3 rather than copying it wholesale into DynamoDB. Reject malformed records and make processing idempotent so the master database contains only unique sightings. Retain well-formed eBird records with `obsValid: false` as `provisional`, rather than misrepresenting them as validated.
 
 Reject entire records marked `locationPrivate: true` before they enter the internal model or DynamoDB. The raw response remains intact in the private S3 bucket for its configured retention; privacy exclusion applies to processed storage and the public API.
 
-The public homepage requests the read API for the 10 most recent sightings and displays species, location, and timestamp. API Gateway invokes a read Lambda, which queries DynamoDB when requested. No user session, cookie, authentication, or persistent latest-sightings cache is needed for Phase 1. Frontend refresh every 15 minutes is optional. Do not add caching infrastructure absent a measured need.
+The public homepage is plain static content in the repository's `site/` directory. Terraform deploys it to a dedicated private S3 site bucket; CloudFront, using Origin Access Control, is the public delivery layer and caches static assets. On each page load, the browser requests the API for the 10 most recent sightings and displays species, location, and timestamp. API Gateway invokes a read Lambda, which queries DynamoDB when requested. No user session, cookie, authentication, persistent latest-sightings cache, or background refresh is needed for Phase 1. CloudFront does not proxy or cache the API response; the API remains the source of current data.
 
 The processor batch-reads canonical identities before creating records, so repeated 24-hour snapshots do not incur repeated transactional writes. Conditional canonical creation remains the concurrency guard. The processor writes one canonical item and four compact query items for a newly seen sighting; an already-known sighting from a new source region updates its provenance and only the two region-specific query items. The canonical item remains keyed by its sighting hash. Query items use the same table's `query-by-key` global secondary index: `LATEST`, `REGION#{region}`, `SPECIES#{species}`, and `REGION#{region}#SPECIES#{species}` are partition values, with `UTC observation timestamp#canonical sighting ID` as the descending sort key. This supports bounded queries without scans while retaining one authoritative canonical record. The exact processor trigger after the raw S3 write is intentionally unchanged.
 
 ## Storage and operations
 
-Use one S3 raw bucket with region-based prefixes. Configure lifecycle expiry for raw dumps; one day is the current configured retention, not an immutable constraint. DynamoDB is the master database. Terraform provisions the infrastructure.
+Use one private S3 raw bucket with region-based prefixes and one separate private S3 site bucket. Configure lifecycle expiry for raw dumps; one day is the current configured retention, not an immutable constraint. CloudFront has access only to the site bucket through Origin Access Control. DynamoDB is the master database. Terraform provisions the infrastructure.
 
 Use least-privilege IAM, Parameter Store for secrets/configuration, encryption where appropriate, input validation, structured logging, and observable, idempotent processing. Keep the design serverless, modular, and cost-conscious.
 

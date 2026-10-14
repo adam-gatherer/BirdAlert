@@ -69,9 +69,10 @@ These scope decisions are accepted. Exact JSON response fields, status codes, cu
 
 ## Milestone 6 - Public homepage
 
-- Build a simple homepage that requests the read API and displays the 10 most recent sightings with species, location, and timestamp.
-- Do not add authentication, sessions, cookies, or persistent application caching for the public Phase 1 homepage.
-- A 15-minute frontend refresh is optional; backend behavior must not depend on a cached homepage copy.
+- Add plain static homepage assets under `site/` that request the 10 most recent sightings from the read API when the page loads and display species, location, and timestamp.
+- Deploy the site through Terraform to a dedicated private S3 site bucket, delivered publicly through CloudFront Origin Access Control.
+- Configure the API's CORS origin for the CloudFront site; do not proxy or cache the API response through CloudFront.
+- Do not add authentication, sessions, cookies, background refresh, persistent application caching, or a heartbeat-written cache for the public Phase 1 homepage.
 
 ## Milestone 7 - Operational hardening
 
