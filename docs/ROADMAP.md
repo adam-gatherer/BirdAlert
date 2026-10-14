@@ -56,13 +56,15 @@ Acceptance: configuration supports one and multiple regions; dev continues to us
 - Add API Gateway and a Lambda read function.
 - Provide recent sightings, species lookup, region lookup, and health endpoints; support retrieval by region, species, and date.
 - Support combinations of region/species/date filters. Region means an eBird poll source code, retained as provenance.
+- Use `GET /sightings` with optional `region`, `species`, `date`, `limit`, and `cursor`; return 10 latest sightings by default and at most 50. Species lookup filters sightings by eBird species code.
+- Treat `date` as ISO 8601 `YYYY-MM-DD` in `Europe/London`, converting date boundaries to UTC for stored timestamps.
 - Make the health endpoint verify the read function's database access.
-- Apply conservative configurable request/burst throttling and bound database work per request to reduce abuse and cost.
+- Configure initial API Gateway throttles of two requests per second with a burst of five for sightings, and one request per second with a burst of two for health. Keep values configurable in Terraform for later changes.
 - The latest-sightings request queries the master database and returns the 10 most recent records.
-- Decide the DynamoDB key/index access pattern needed for that query during this milestone. Do not add a cache solely for the latest 10.
+- Add small timestamp-sorted DynamoDB query records for latest, region, species, and region-plus-species lookups. Keep one canonical record per unique sighting and never copy the raw payload into query records. Do not add a cache solely for the latest 10.
 - Add focused API tests.
 
-These scope decisions are accepted; endpoint shapes, date semantics, limits, and the DynamoDB query design remain pending the API design discussion. See [design decisions](DECISIONS.md).
+These scope decisions are accepted. Exact JSON response fields, status codes, cursor encoding, and query-record key values are implementation details to document with the Milestone 5 change. See [design decisions](DECISIONS.md).
 
 ## Milestone 6 - Public homepage
 

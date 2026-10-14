@@ -24,6 +24,8 @@ Implement the complete ingestion, read API, and simple homepage:
 - Expose read-only API endpoints for recent sightings, species lookup, region lookup, and health status. Support retrieval by region, species, and date.
 - Allow region, species, and date filters to be combined. A sighting's region means the eBird source region used to poll it; retain this provenance independently of its identity.
 - Have the health endpoint verify that the read function can access the master database, rather than reporting function liveness alone.
+- Use `GET /sightings` with optional `region`, `species`, `date`, `limit`, and `cursor` query parameters. It returns the latest 10 sightings by default and at most 50 per request. Species lookup means filtering sightings by eBird species code; a separate species catalogue is not part of Phase 1.
+- Interpret `date` as an ISO 8601 `YYYY-MM-DD` calendar day in `Europe/London`. Processed timestamps remain UTC. Future regional expansion may add explicitly versioned or opt-in regional date/time semantics; do not accept ambiguous US-style date input in Phase 1.
 - A simple public homepage displays the 10 most recent sightings (species, location, timestamp) by requesting the read API.
 - Terraform provisions AWS infrastructure.
 
@@ -35,7 +37,7 @@ The exact processor invocation mechanism and database access pattern are impleme
 
 ## AWS and data
 
-Use EventBridge, Lambda, S3, DynamoDB, API Gateway, IAM, CloudWatch, Parameter Store, and Terraform. DynamoDB is the intended master database and should be designed for application queries. The exact key/index pattern for efficiently returning the latest 10 sightings is an implementation concern for the API milestone, not a product requirement to invent here.
+Use EventBridge, Lambda, S3, DynamoDB, API Gateway, IAM, CloudWatch, Parameter Store, and Terraform. DynamoDB is the intended master database and should be designed for application queries. Store one canonical item per sighting plus small, purpose-built query items with timestamp sort keys for latest, region, species, and region-plus-species lookups. These query items contain only the fields needed to answer their access pattern and must not duplicate the raw eBird payload.
 
 The S3 lifecycle should expire old raw dumps. The current configured retention is one day, subject to deployment configuration.
 
@@ -43,7 +45,7 @@ The S3 lifecycle should expire old raw dumps. The current configured retention i
 
 The homepage is public and needs no user sessions, session cookies, authentication, or application state. On request, the API Gateway endpoint invokes a read Lambda, which queries the master database and returns the latest 10 sightings. Do not add a persistent cache solely for these results. A frontend refresh on a 15-minute cadence is optional; backend correctness must not depend on a cached homepage copy. Do not add Redis/ElastiCache or other caching infrastructure without a future measured need.
 
-The read API primarily serves BirdAlert's own homepage using processed DynamoDB sightings, not the raw eBird dumps. Its unauthenticated public endpoint can also receive direct requests from other clients. Apply conservative configurable request/burst throttling and bounded database reads to reduce abuse and cost; throttling is not a guaranteed spending cap.
+The read API primarily serves BirdAlert's own homepage using processed DynamoDB sightings, not the raw eBird dumps. Its unauthenticated public endpoint can also receive direct requests from other clients. Configure API Gateway with an initial steady rate of two requests per second and a burst limit of five requests for the sightings route, and one request per second with a burst limit of two for health. Keep these Terraform values configurable so they can be increased with observed demand. Bound each database request to at most 50 results and use query items rather than table scans to control cost; throttling is not a guaranteed spending cap.
 
 ## Security and quality
 

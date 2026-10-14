@@ -20,9 +20,21 @@ Rationale: using the source's region vocabulary keeps ingestion and retrieval co
 
 Accepted for Milestone 5; not implemented. The read API primarily serves BirdAlert's homepage using validated sightings accumulated in DynamoDB. It does not serve raw eBird dumps or poll eBird on each client request. The upstream 24-hour response window and raw S3 retention do not impose a 24-hour retention limit on processed DynamoDB sightings; the table currently has no expiry.
 
-Region, species, and date filters may be combined. Public unauthenticated access also allows direct requests from other clients, so app ownership cannot be enforced simply by hiding the endpoint or restricting browser CORS origins.
+Region, species, and date filters may be combined. `GET /sightings` accepts optional `region`, `species`, `date`, `limit`, and `cursor` parameters. It returns 10 latest sightings by default and permits at most 50 records in one page. Species lookup means filtering sightings by eBird species code; a separate species catalogue is not part of Phase 1. Public unauthenticated access also allows direct requests from other clients, so app ownership cannot be enforced simply by hiding the endpoint or restricting browser CORS origins.
 
-Rationale: combined filters support useful app queries while conservative request/burst throttling and bounded database reads reduce abuse and cost. API Gateway throttles are best-effort targets, not guaranteed request ceilings or spending caps. Exact endpoint shapes, date/timezone semantics, result limits, pagination, throttle values, and query/index design remain pending the API discussion; no new protection service is selected here.
+Rationale: combined filters support useful app queries while a 50-result maximum bounds DynamoDB work and response size. API Gateway starts at two requests per second with a burst of five for sightings, and one request per second with a burst of two for health. These Terraform-managed values can increase with observed demand. API Gateway throttles are best-effort targets, not guaranteed request ceilings or spending caps. No new protection service is selected here.
+
+## 2026-10-14 - UK calendar-date API filter
+
+Accepted for Milestone 5; not implemented. The `date` query parameter is ISO 8601 `YYYY-MM-DD` and selects a calendar day in `Europe/London`. DynamoDB retains timestamps in UTC, so the read Lambda will convert the start and end of the requested UK day to UTC before querying.
+
+Rationale: BirdAlert is UK-first, so human-facing date queries should align with UK calendar days, including daylight-saving transitions. ISO `YYYY-MM-DD` is intentionally unambiguous across locales. Any future support for regional date/time semantics must be explicit, versioned or opt-in, and designed alongside international expansion; Phase 1 does not accept ambiguous US-style date inputs.
+
+## 2026-10-14 - Canonical sightings and DynamoDB query records
+
+Accepted for Milestone 5; not implemented. DynamoDB retains one canonical record per unique sighting. Small query records with timestamp sort keys support the latest, region, species, and region-plus-species access patterns. They contain only fields required to answer the corresponding read request and never copy a raw eBird payload.
+
+Rationale: the canonical record is the authoritative stored sighting. Purpose-built query records make the public API's bounded reads predictable and avoid costly table scans or a separate cache. The exact key shape, transactional write strategy, cursor encoding, and response projection remain Milestone 5 implementation details.
 
 ## 2026-10-14 - Health verifies database access
 

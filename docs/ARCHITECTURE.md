@@ -39,13 +39,15 @@ Use least-privilege IAM, Parameter Store for secrets/configuration, encryption w
 
 ## Intended API
 
-Provide read-only endpoints for recent sightings, species lookup, region lookup, and health. Support retrieval by region, species, and date. The homepage's latest-10 request uses the same read API and reads the database at request time.
+Provide `GET /sightings` and `GET /health`. `GET /sightings` provides recent sightings, species lookup, region lookup, and date retrieval through optional query parameters: `region`, `species`, `date`, `limit`, and `cursor`. Its default is the latest 10 results and its maximum page size is 50. The homepage uses this endpoint without filters and reads the database at request time. Species lookup filters sightings by eBird species code; a separate species catalogue is out of scope for Phase 1.
 
-Region/species/date filters can be combined. Region is an eBird poll source code, retained in the item's `source_regions` set, not the AWS region. This preserves expansion options without expanding the UK-only MVP or implying that international time handling is implemented.
+Region/species/date filters can be combined. Region is an eBird poll source code, retained in the item's `source_regions` set, not the AWS region. The `date` parameter uses ISO 8601 `YYYY-MM-DD` and denotes a calendar day in `Europe/London`; timestamps remain stored as UTC. This preserves a UK-first product boundary while leaving regional date/time semantics for a separately designed future change.
 
-The API primarily serves BirdAlert's homepage. Because it is public and unauthenticated, other clients can call it directly; browser CORS restrictions do not authenticate callers. Apply conservative configurable throttling and bounded query/page sizes. API Gateway throttles are best-effort targets, not hard cost caps. Endpoint shapes, date semantics, result limits, and throttle values remain to be agreed before Milestone 5 implementation.
+The API primarily serves BirdAlert's homepage. Because it is public and unauthenticated, other clients can call it directly; browser CORS restrictions do not authenticate callers. Start with configurable API Gateway throttles of two requests per second and a burst of five for sightings, and one request per second and a burst of two for health. Bound result pages to 50 records and use opaque cursors. API Gateway throttles are best-effort targets, not hard cost caps; these conservative values can be changed through Terraform after observing demand.
 
 The health endpoint must perform a read against the master database using the read function's IAM role. A successful check verifies database access; it does not by itself prove ingestion is healthy or sightings are fresh. See [design decisions](DECISIONS.md) for the rationale and implementation status.
+
+DynamoDB stores one canonical record per unique sighting. It also stores small query records with a timestamp-based sort key for the latest, region, species, and region-plus-species access patterns. The read Lambda queries the appropriate records rather than scanning the canonical dataset and filtering in memory. Query records carry only fields needed for that access pattern and never duplicate raw payloads. Their write strategy and exact key values are Milestone 5 implementation details.
 
 ## Phase 2 architecture
 

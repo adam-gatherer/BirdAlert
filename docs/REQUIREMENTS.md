@@ -18,11 +18,12 @@ The system shall:
 8. Transform valid records into an internal model and deduplicate them so the master database contains only unique sightings.
 9. Store at minimum species, sighting timestamp, and sighting location in the master database. Do not unnecessarily duplicate the full raw payload there.
 10. Make processing idempotent.
-11. Provide a read-only API for recent sightings, species lookup, region lookup, health, and retrieval by region, species, and date, including combinations of these filters. Region refers to the configured eBird region used to obtain a sighting, not the AWS deployment region.
+11. Provide `GET /sightings` for recent sightings, species lookup, region lookup, and retrieval by region, species, and date, including combinations of these filters. It accepts optional `region`, `species`, `date`, `limit`, and `cursor` parameters; defaults to 10 results; and limits pages to 50. Region refers to the configured eBird region used to obtain a sighting, not the AWS deployment region. Species lookup filters sightings by eBird species code.
 12. Provide a public homepage that obtains data through the read API and displays the 10 most recent sightings with species, location, and timestamp.
 13. Have the latest-sightings endpoint query the master database when requested. Do not require sessions, cookies, authentication, persistent latest-10 caching, Redis, or ElastiCache for the public Phase 1 homepage.
 14. Exclude entire records marked `locationPrivate: true` from the internal model and master database. Preserve complete raw responses only in the private S3 landing area for their configured retention.
 15. Have the health endpoint check the read function's connectivity and permission to access the master database, rather than returning function liveness alone.
+16. Interpret `date` as ISO 8601 `YYYY-MM-DD` for a calendar day in `Europe/London`, converting the requested range to UTC for stored timestamps. Do not accept ambiguous regional date formats in Phase 1.
 
 The exact database key/index access pattern for the latest-10 query is an implementation concern for the read API milestone, not an additional product requirement. A frontend refresh every 15 minutes is optional; backend correctness must not rely on a cached homepage copy.
 
@@ -37,6 +38,8 @@ The system shall:
 - avoid credentials in source code;
 - use structured logging and preserve raw responses in S3 for their configured retention period.
 - apply configurable conservative request/burst throttling to the public API and bound database work per request to reduce abuse and cost; throttling is not a guaranteed request ceiling or spending cap.
+- initially configure API Gateway throttles at two requests per second with a burst of five for sightings, and one request per second with a burst of two for health. Keep these values in Terraform configuration for later adjustment.
+- answer read requests through timestamp-sorted DynamoDB query records rather than scans, and keep any query-record projection minimal.
 
 ## Non-functional requirements
 
