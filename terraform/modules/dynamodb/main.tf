@@ -19,9 +19,18 @@ resource "aws_dynamodb_table" "sightings" {
   }
 
   global_secondary_index {
-    name            = "query-by-key"
-    hash_key        = "query_key"
-    range_key       = "query_sort"
+    name = "query-by-key"
+
+    key_schema {
+      attribute_name = "query_key"
+      key_type       = "HASH"
+    }
+
+    key_schema {
+      attribute_name = "query_sort"
+      key_type       = "RANGE"
+    }
+
     projection_type = "ALL"
   }
 
