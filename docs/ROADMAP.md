@@ -8,7 +8,7 @@ The Bible's roadmap places the basic frontend at Sprint 5. It is included in the
 
 ## Current repository state
 
-Implemented in repository code/configuration: Milestone 1 configuration-driven polling, poller Lambda, eBird API request, SSM lookup, raw S3 write, supporting IAM and Terraform modules, Terraform remote-state bootstrap, and Milestone 2 scheduling/retention. Milestone 3 has S3-triggered first-seen processing of 24-hour snapshots, validation, and transformation. Milestone 4 persists accepted records to DynamoDB with conditional writes; a SHA-256 hash of submission ID and species code provides idempotency and deduplication, batch identity checks avoid repeat transactional writes, source regions are retained as provenance, entire private sightings are excluded, and otherwise well-formed unvalidated eBird records are marked provisional. Milestone 5 adds the public read API, database-aware health endpoint, timestamp-sorted query records, bounded cursor pagination, UK date conversion, and configurable API throttles. Milestone 6 adds the static homepage, private S3/CloudFront delivery, API configuration, and focused frontend tests. This does not confirm deployment to AWS.
+Implemented in repository code/configuration: Milestone 1 configuration-driven polling, poller Lambda, eBird API request, SSM lookup, raw S3 write, supporting IAM and Terraform modules, Terraform remote-state bootstrap, and Milestone 2 scheduling/retention. Milestone 3 has S3-triggered first-seen processing of 24-hour snapshots, validation, and transformation. Milestone 4 persists accepted records to DynamoDB with conditional writes; a SHA-256 hash of submission ID and species code provides idempotency and deduplication, batch identity checks avoid repeat transactional writes, source regions are retained as provenance, entire private sightings are excluded, and otherwise well-formed unvalidated eBird records are marked provisional. Milestone 5 adds the public read API, database-aware health endpoint, timestamp-sorted query records, bounded cursor pagination, UK date conversion, and configurable API throttles. Milestone 6 adds the static homepage, private S3/CloudFront delivery, API configuration, and focused frontend tests. Milestone 6.5 adds a processor-completion freshness timestamp. This does not confirm deployment to AWS.
 
 Not implemented: explicit retry/failure handling. Processor logs already provide safe aggregate validation-rejection reasons; broader operational hardening remains Milestone 7.
 
@@ -73,6 +73,13 @@ These scope decisions are accepted. Exact JSON response fields, status codes, cu
 - Deploy the site through Terraform to a dedicated private S3 site bucket, delivered publicly through CloudFront Origin Access Control.
 - Configure the API's CORS origin for the CloudFront site; do not proxy or cache the API response through CloudFront.
 - Do not add authentication, sessions, cookies, background refresh, persistent application caching, or a heartbeat-written cache for the public Phase 1 homepage.
+
+## Milestone 6.5 - Data freshness visibility (implemented in repository; not deployed)
+
+- After successfully processing a raw S3 object, write its completion time to one fixed-key DynamoDB operational-status item.
+- Return nullable `last_successful_processing_at` from `GET /sightings` and display it on the homepage in UK time.
+- Do not treat poll initiation, browser load time, or a successful poll that has not completed processing as evidence that displayed data is fresh.
+- Do not add a cache, new AWS service, table schema change, or background browser polling for this indicator.
 
 ## Milestone 7 - Operational hardening
 

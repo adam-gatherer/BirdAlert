@@ -392,6 +392,15 @@ class ProcessorTests(unittest.TestCase):
             Bucket="birdalert-raw", Key=object_key
         )
         self.app.dynamodb.transact_write_items.assert_called_once()
+        self.app.dynamodb.put_item.assert_called_once()
+        processing_status = self.app.dynamodb.put_item.call_args.kwargs
+        self.assertEqual(
+            processing_status["Item"]["sighting_id"],
+            {"S": self.app.PROCESSING_STATUS_ID},
+        )
+        self.assertIn(
+            "last_successful_processing_at", processing_status["Item"]
+        )
         self.assertEqual(
             result,
             {
@@ -401,6 +410,31 @@ class ProcessorTests(unittest.TestCase):
                 "persisted_records": 1,
                 "existing_records": 0,
                 "provenance_updated_records": 0,
+            },
+        )
+
+    @patch.dict(os.environ, {"SIGHTINGS_TABLE": "birdalert-sightings"}, clear=True)
+    def test_processing_status_is_written_after_a_successful_empty_snapshot(self):
+        self.app.s3.get_object.return_value = {
+            "Body": io.BytesIO(json.dumps([]).encode("utf-8"))
+        }
+
+        self.app.process_s3_record(
+            {
+                "s3": {
+                    "bucket": {"name": "birdalert-raw"},
+                    "object": {
+                        "key": "GB-ENG/20260930T101700.000000Z-test.json"
+                    },
+                }
+            }
+        )
+
+        self.app.dynamodb.put_item.assert_called_once_with(
+            TableName="birdalert-sightings",
+            Item={
+                "sighting_id": {"S": self.app.PROCESSING_STATUS_ID},
+                "last_successful_processing_at": unittest.mock.ANY,
             },
         )
 

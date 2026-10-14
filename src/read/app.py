@@ -18,6 +18,7 @@ REGION_PATTERN = re.compile(r"^[A-Z]{2,3}(?:-[A-Z0-9]+)*$")
 SPECIES_PATTERN = re.compile(r"^[a-z0-9]{1,32}$")
 DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 ALLOWED_PARAMETERS = {"region", "species", "date", "limit", "cursor"}
+PROCESSING_STATUS_ID = "__processing_status__"
 
 
 class APIError(ValueError):
@@ -154,6 +155,16 @@ def sighting_response(item):
     return result
 
 
+def last_successful_processing_at():
+    result = dynamodb.get_item(
+        TableName=table_name(),
+        Key={"sighting_id": {"S": PROCESSING_STATUS_ID}},
+        ProjectionExpression="last_successful_processing_at",
+    )
+    value = result.get("Item", {}).get("last_successful_processing_at", {}).get("S")
+    return value if isinstance(value, str) else None
+
+
 def get_sightings(parameters):
     region = parameters.get("region")
     species = parameters.get("species")
@@ -182,6 +193,7 @@ def get_sightings(parameters):
     return {
         "sightings": [sighting_response(item) for item in result.get("Items", [])],
         "next_cursor": encode_cursor(result.get("LastEvaluatedKey")),
+        "last_successful_processing_at": last_successful_processing_at(),
     }
 
 

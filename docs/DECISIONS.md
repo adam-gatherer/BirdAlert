@@ -54,6 +54,12 @@ The homepage will request `GET /sightings` once when a user opens the page. It w
 
 Rationale: expected users will normally view the page briefly, so a scheduled client-side refresh would add requests without meaningful benefit. A single page-load request gives each visitor current data while keeping Lambda and DynamoDB interactions low. The existing bounded query and API throttles provide the appropriate low-cost protection at this stage. CloudFront reduces direct S3 asset reads and protects the site bucket without adding a second copy of dynamic sighting data or cache invalidation complexity. `PriceClass_100` serves the UK while limiting edge-location cost, and the five-minute asset cache balances reduced S3 reads with timely Terraform-deployed updates.
 
+## 2026-10-14 - End-to-end data freshness indicator
+
+Accepted and implemented locally. After a processor invocation successfully handles a raw S3 object, it overwrites one fixed-key DynamoDB operational-status item with `last_successful_processing_at`. `GET /sightings` returns this nullable timestamp alongside its bounded sighting result, and the homepage formats it in `Europe/London`. The timestamp is initially absent until the first successful processing run after deployment.
+
+Rationale: a poll start or successful eBird response does not prove that new data has passed validation, persistence, and the read path. Recording processor completion provides an honest, low-cost end-to-end freshness signal for visitors. A single status item adds one small DynamoDB write per successful raw object and one lightweight read per API request; it does not create a cache or duplicate sightings. It needs no table schema change because DynamoDB is schemaless, and the existing least-privilege processor and read permissions already allow `PutItem` and `GetItem` on this table.
+
 ## 2026-10-14 - UK calendar-date API filter
 
 Accepted and implemented locally. The `date` query parameter is ISO 8601 `YYYY-MM-DD` and selects a calendar day in `Europe/London`. DynamoDB retains timestamps in UTC, and the read Lambda converts the start and end of the requested UK day to UTC before querying.

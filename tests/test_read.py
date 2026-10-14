@@ -64,11 +64,32 @@ class ReadTests(unittest.TestCase):
         self.assertEqual(body["sightings"][0]["species"]["code"], "eurrob")
         self.assertEqual(body["sightings"][0]["location"]["latitude"], 51.5)
         self.assertEqual(body["sightings"][0]["validation_status"], "provisional")
+        self.assertIsNone(body["last_successful_processing_at"])
         request = self.app.dynamodb.query.call_args.kwargs
         self.assertEqual(request["IndexName"], "query-by-key")
         self.assertEqual(request["ExpressionAttributeValues"][":query_key"], {"S": "LATEST"})
         self.assertEqual(request["Limit"], 10)
         self.assertFalse(request["ScanIndexForward"])
+
+    def test_latest_sightings_include_last_successful_processing_timestamp(self):
+        self.app.dynamodb.query.return_value = {"Items": [query_item()]}
+        self.app.dynamodb.get_item.return_value = {
+            "Item": {
+                "last_successful_processing_at": {"S": "2026-10-14T14:32:43Z"}
+            }
+        }
+
+        status, body = self.call(event("/sightings"))
+
+        self.assertEqual(status, 200)
+        self.assertEqual(
+            body["last_successful_processing_at"], "2026-10-14T14:32:43Z"
+        )
+        self.app.dynamodb.get_item.assert_called_once_with(
+            TableName="birdalert-sightings",
+            Key={"sighting_id": {"S": self.app.PROCESSING_STATUS_ID}},
+            ProjectionExpression="last_successful_processing_at",
+        )
 
     def test_combined_filter_uses_uk_date_boundaries_and_cursor(self):
         cursor_key = {

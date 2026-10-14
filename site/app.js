@@ -1,5 +1,6 @@
 (async function loadSightings() {
   const status = document.getElementById("status");
+  const freshness = document.getElementById("freshness");
   const sightings = document.getElementById("sightings");
   const endpoint = window.BIRDALERT_API_ENDPOINT;
 
@@ -20,16 +21,24 @@
       throw new Error("Sightings response has an unexpected shape");
     }
 
-    if (payload.sightings.length === 0) {
-      status.textContent = "No recent sightings are available.";
-      return;
-    }
-
     const formatter = new Intl.DateTimeFormat("en-GB", {
       dateStyle: "medium",
       timeStyle: "short",
       timeZone: "Europe/London",
     });
+    if (typeof payload.last_successful_processing_at === "string") {
+      freshness.textContent = `Data last processed: ${formatter.format(
+        new Date(payload.last_successful_processing_at),
+      )}`;
+    } else {
+      freshness.textContent = "Data freshness is not available yet.";
+    }
+
+    if (payload.sightings.length === 0) {
+      status.textContent = "No recent sightings are available.";
+      return;
+    }
+
     for (const sighting of payload.sightings) {
       const row = document.createElement("tr");
       const commonName = document.createElement("strong");
@@ -62,5 +71,6 @@
     console.error("Unable to load BirdAlert sightings", error);
     status.textContent = "Sightings are unavailable right now.";
     status.classList.add("error");
+    freshness.textContent = "Data freshness is unavailable right now.";
   }
 })();

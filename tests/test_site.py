@@ -43,6 +43,14 @@ class SiteTests(unittest.TestCase):
         self.assertNotIn("sighting.location.latitude", script)
         self.assertNotIn("sighting.location.longitude", script)
 
+    def test_application_displays_the_backend_processing_timestamp(self):
+        html = (SITE_PATH / "index.html").read_text(encoding="utf-8")
+        script = (SITE_PATH / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn('id="freshness"', html)
+        self.assertIn("last_successful_processing_at", script)
+        self.assertIn("Data last processed:", script)
+
 
 if __name__ == "__main__":
     unittest.main()

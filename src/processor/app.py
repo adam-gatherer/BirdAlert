@@ -18,6 +18,7 @@ RAW_KEY_PATTERN = re.compile(
 )
 OBSERVATION_TIME_FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M")
 MAX_BATCH_GET_ATTEMPTS = 3
+PROCESSING_STATUS_ID = "__processing_status__"
 
 
 class InvalidRecord(ValueError):
@@ -295,6 +296,21 @@ def sightings_table_name():
     return table_name
 
 
+def persist_processing_status(table_name, processed_at):
+    if processed_at.tzinfo is None:
+        raise ValueError("Processing timestamp must be timezone-aware")
+
+    dynamodb.put_item(
+        TableName=table_name,
+        Item={
+            "sighting_id": {"S": PROCESSING_STATUS_ID},
+            "last_successful_processing_at": {
+                "S": processed_at.astimezone(UTC).isoformat().replace("+00:00", "Z")
+            },
+        },
+    )
+
+
 def process_payload(payload, source_region, ingested_at):
     if not isinstance(payload, list):
         raise ValueError("Raw eBird response must be a JSON array")
@@ -362,6 +378,11 @@ def process_s3_record(event_record):
     result["persisted_records"] = persisted_records
     result["existing_records"] = existing_records
     result["provenance_updated_records"] = provenance_updated_records
+    processed_at = datetime.now(UTC)
+    persist_processing_status(table_name, processed_at)
+    result["last_successful_processing_at"] = processed_at.isoformat().replace(
+        "+00:00", "Z"
+    )
     print(
         json.dumps(
             {
@@ -369,6 +390,7 @@ def process_s3_record(event_record):
                 "bucket": bucket_name,
                 "object": object_key,
                 "first_seen_at": result["first_seen_at"],
+                "last_successful_processing_at": result["last_successful_processing_at"],
                 "accepted_records": len(result["accepted"]),
                 "rejected_records": len(result["rejected"]),
                 "rejection_reason_counts": rejection_reason_counts(result["rejected"]),
