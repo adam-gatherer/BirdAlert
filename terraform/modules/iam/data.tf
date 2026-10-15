@@ -59,3 +59,11 @@ data "aws_iam_policy_document" "raw_bucket" {
     ]
   }
 }
+
+data "aws_iam_policy_document" "poller_dlq" {
+  statement {
+    effect    = "Allow"
+    actions   = ["sqs:SendMessage"]
+    resources = [var.poller_dlq_arn]
+  }
+}

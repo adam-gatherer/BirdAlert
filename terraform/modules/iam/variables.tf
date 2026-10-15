@@ -12,3 +12,8 @@ variable "bucket_arn" {
   description = "ARN of the raw bucket."
   type        = string
 }
+
+variable "poller_dlq_arn" {
+  description = "ARN of the queue receiving exhausted poller executions."
+  type        = string
+}

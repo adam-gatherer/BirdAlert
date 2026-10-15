@@ -57,6 +57,10 @@ The import must report success. Review the plan before applying; the imported lo
 
 Do not claim that AWS deployment succeeded unless it has actually been performed and verified.
 
+For the Milestone 7 poller retry-budget and failure-destination correction, review a new dev plan and apply it through the usual workflow. It should update the poller timeout and add its queue-scoped IAM policy/attachment and Lambda asynchronous invocation configuration; it should reuse the existing poller DLQ. No Lambda package rebuild is needed for this Terraform-only correction. Live failure-destination delivery and alarm behaviour still require verification after deployment. An EventBridge delivery failure and a Lambda execution failure use different message envelopes; inspect the envelope and replay its original event manually after resolving the cause.
+
+Run `terraform -chdir=terraform/root test` from the repository root to check poller failure-destination wiring and timeout budgets using mocked providers and isolated test state. These tests do not contact AWS or deploy resources. They still require the providers and existing Lambda package files to be available locally.
+
 ## Python changes
 
 For Python changes:

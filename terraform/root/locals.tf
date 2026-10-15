@@ -8,6 +8,9 @@ locals {
     read      = "${local.name_prefix}-read"
   }
 
+  # Four eBird attempts, backoff, and AWS calls per sequentially polled region.
+  poller_timeout_seconds = min(900, 300 * length(var.ebird_regions))
+
   site_directory   = "${path.module}/../../site"
   site_asset_files = toset([for file in fileset("${path.module}/../../site", "**") : file if file != "config.js.tftpl"])
   site_content_types = {

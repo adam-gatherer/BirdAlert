@@ -68,6 +68,8 @@ CloudWatch logs retain 30 days. High-priority CloudWatch alarms cover poller/pro
 
 Rationale: separate queues distinguish upstream-polling failures from raw-object processing failures, making diagnosis and safe replay clearer. Three retries balance recovery from brief eBird or network disruption against unnecessary repeat requests and cost. Retaining failed events makes failure observable without exposing their content through logs. Problem-only alerts provide useful operational signal without creating routine inbox noise; optional email keeps the deployment portable and avoids embedding administrator contact details in source control.
 
+Completion correction: an EventBridge DLQ captures failure to deliver an event to Lambda; it cannot capture an error raised after Lambda accepts that event. The poller therefore also has a Lambda asynchronous failure destination pointing to the same poller DLQ, with queue-scoped `sqs:SendMessage` permission. Both poller and processor asynchronous configurations permit two execution retries with a one-hour event age, independently of the three eBird request retries. The poller timeout now allows five minutes per configured region, capped at fifteen minutes, instead of the shared 30-second default. This gives the current deployment room to complete requests and backoff; it does not reserve capacity or increase billing for normal quick invocations. Revisit the budget before expanding to larger region sets.
+
 ## 2026-10-14 - UK calendar-date API filter
 
 Accepted and implemented locally. The `date` query parameter is ISO 8601 `YYYY-MM-DD` and selects a calendar day in `Europe/London`. DynamoDB retains timestamps in UTC, and the read Lambda converts the start and end of the requested UK day to UTC before querying.

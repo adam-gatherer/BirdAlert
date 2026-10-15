@@ -31,6 +31,8 @@ module "poller_lambda" {
 
   runtime = "python3.13"
 
+  timeout = local.poller_timeout_seconds
+
   environment_variables = {
     RAW_BUCKET     = module.raw_bucket.bucket_name
     PARAMETER_NAME = module.ebird_api_key.parameter_name
@@ -62,6 +64,23 @@ module "poller_iam" {
   parameter_arn = module.ebird_api_key.parameter_arn
 
   bucket_arn = module.raw_bucket.bucket_arn
+
+  poller_dlq_arn = module.poller_dlq.queue_arn
+}
+
+resource "aws_lambda_function_event_invoke_config" "poller" {
+  # Lambda verifies destination permissions when applying this configuration.
+  depends_on = [module.poller_iam]
+
+  function_name                = module.poller_lambda.function_name
+  maximum_retry_attempts       = 2
+  maximum_event_age_in_seconds = 3600
+
+  destination_config {
+    on_failure {
+      destination = module.poller_dlq.queue_arn
+    }
+  }
 }
 
 module "poller_schedule" {

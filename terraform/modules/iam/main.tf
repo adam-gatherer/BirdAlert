@@ -33,3 +33,13 @@ resource "aws_iam_role_policy_attachment" "raw_bucket" {
   role       = aws_iam_role.lambda.name
   policy_arn = aws_iam_policy.raw_bucket.arn
 }
+
+resource "aws_iam_policy" "poller_dlq" {
+  name   = "${var.role_name}-poller-dlq"
+  policy = data.aws_iam_policy_document.poller_dlq.json
+}
+
+resource "aws_iam_role_policy_attachment" "poller_dlq" {
+  role       = aws_iam_role.lambda.name
+  policy_arn = aws_iam_policy.poller_dlq.arn
+}
