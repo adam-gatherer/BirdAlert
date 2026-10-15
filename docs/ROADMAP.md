@@ -2,19 +2,19 @@
 
 ## Current target
 
-Complete Phase 1: a UK single-application product with 15-minute ingestion, unique processed sightings, a read API, and a simple public homepage. Phase 2 adds authenticated users and personalised email alerts.
+Phase 1 is complete: a UK single-application product with 15-minute ingestion, unique processed sightings, a read API, a simple public homepage, and operational failure handling. Phase 2 adds authenticated users and personalised email alerts.
 
 The Bible's roadmap places the basic frontend at Sprint 5. It is included in the agreed Phase 1 product.
 
 ## Current repository state
 
-Implemented in repository code/configuration: Milestone 1 configuration-driven polling, poller Lambda, eBird API request, SSM lookup, raw S3 write, supporting IAM and Terraform modules, Terraform remote-state bootstrap, and Milestone 2 scheduling/retention. Milestone 3 has S3-triggered first-seen processing of 24-hour snapshots, validation, and transformation. Milestone 4 persists accepted records to DynamoDB with conditional writes; a SHA-256 hash of submission ID and species code provides idempotency and deduplication, batch identity checks avoid repeat transactional writes, source regions are retained as provenance, entire private sightings are excluded, and otherwise well-formed unvalidated eBird records are marked provisional. Milestone 5 adds the public read API, database-aware health endpoint, timestamp-sorted query records, bounded cursor pagination, UK date conversion, and configurable API throttles. Milestone 6 adds the static homepage, private S3/CloudFront delivery, API configuration, and focused frontend tests. Milestone 6.5 adds a processor-completion freshness timestamp. Milestone 7 adds bounded eBird retries, failure DLQs, high-priority operational alarms, optional administrator email notification, and managed log retention. This does not confirm deployment to AWS.
+All Phase 1 milestones are implemented in repository code/configuration and have been deployed to the dev environment. Milestone 1 provides configuration-driven polling, the poller Lambda, eBird API request, SSM lookup, raw S3 write, supporting IAM and Terraform modules, Terraform remote-state bootstrap, and Milestone 2 scheduling/retention. Milestone 3 provides S3-triggered first-seen processing of 24-hour snapshots, validation, and transformation. Milestone 4 persists accepted records to DynamoDB with conditional writes; a SHA-256 hash of submission ID and species code provides idempotency and deduplication, batch identity checks avoid repeat transactional writes, source regions are retained as provenance, entire private sightings are excluded, and otherwise well-formed unvalidated eBird records are marked provisional. Milestone 5 provides the public read API, database-aware health endpoint, timestamp-sorted query records, bounded cursor pagination, UK date conversion, and configurable API throttles. Milestone 6 provides the static homepage, private S3/CloudFront delivery, API configuration, and focused frontend tests. Milestone 6.5 adds a processor-completion freshness timestamp. Milestone 7 provides bounded eBird retries, failure DLQs, high-priority operational alarms, optional administrator email notification, and managed log retention.
 
 Not implemented: Phase 2 user and alerting features. Processor logs provide safe aggregate validation-rejection reasons; Milestone 7 adds focused operational-failure logging without record data.
 
 The poller configuration interface is `EBIRD_REGIONS` (comma-separated region codes), `PARAMETER_NAME` (environment-specific SSM parameter name), and `RAW_BUCKET`. Terraform supplies these Lambda environment variables. `terraform/environments/dev.tfvars` configures `GB-ENG`; deployment-specific region values remain the deployer's responsibility.
 
-Completion-review corrections are implemented locally: date queries use a valid `BETWEEN` expression, eBird requests explicitly select `back=1`, and execution roles can log only to their own groups. Local regressions cover these corrections. Earlier dev deployments were reported by the maintainer; deployment of the latest corrections and live DLQ/alarm acceptance must still be recorded before Phase 1 sign-off. See [development and verification](DEVELOPMENT.md).
+Completion-review corrections are deployed: date queries use a valid `BETWEEN` expression, eBird requests explicitly select `back=1`, and execution roles can log only to their own groups. Local regressions cover these corrections. On 15 October 2026, the maintainer live-verified scheduled ingestion, raw S3 storage, successful processor completion, DynamoDB-backed homepage freshness, a synthetic malformed processor event exhausting all three attempts, delivery to the processor DLQ, CloudWatch alarm transitions, and a successful SNS operational-topic action. The synthetic DLQ message was then removed. See [development and verification](DEVELOPMENT.md).
 
 ## Milestone 1 - Configuration-driven polling (implemented in repository)
 
@@ -83,7 +83,7 @@ These scope decisions are accepted. Exact JSON response fields, status codes, cu
 - Do not treat poll initiation, browser load time, or a successful poll that has not completed processing as evidence that displayed data is fresh.
 - Do not add a cache, new AWS service, table schema change, or background browser polling for this indicator.
 
-## Milestone 7 - Operational hardening (implemented in repository; live acceptance pending)
+## Milestone 7 - Operational hardening (complete)
 
 - Add three bounded exponential-backoff retries for transient eBird network, `429`, and `5xx` failures; do not retry invalid data or non-transient client errors.
 - Add separate encrypted 14-day SQS DLQs for exhausted poller and processor deliveries. Keep replay manual in Phase 1.
@@ -91,6 +91,8 @@ These scope decisions are accepted. Exact JSON response fields, status codes, cu
 - Publish alarms to an SNS operational topic. Make the administrator email subscription optional Terraform configuration; do not notify on routine successful 15-minute heartbeats.
 - Review IAM, encryption, raw retention, environment configuration, and deployment procedure.
 - Add focused failure/retry tests and Terraform validation; report live AWS state only if actually checked.
+
+Completion evidence: the normal dev pipeline was observed processing a raw object and updating the homepage freshness time. A deliberately malformed asynchronous processor event failed three times, was delivered to the encrypted processor DLQ with `RetriesExhausted`, raised the processor error and DLQ alarms, and caused CloudWatch to successfully execute the SNS alarm action. The test message was inspected and removed. Poller execution-failure, EventBridge delivery-failure, and stale-processing simulations remain optional future resilience drills; they are not unimplemented Phase 1 features.
 
 ## Phase 2 - Users and personalised alerts
 

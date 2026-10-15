@@ -85,20 +85,20 @@ terraform -chdir=terraform/root validate
 
 Run `terraform init` again if Terraform reports uninstalled local test modules. The logging-policy tests inspect the configured actions and resource scope; mocked providers do not prove live IAM authorisation or notification delivery.
 
-## Phase 1 live acceptance
+## Phase 1 live acceptance (completed in dev on 15 October 2026)
 
-Record the environment, deployed revision, time, and result of each check before closing Phase 1. Repository tests passing or Terraform apply completing alone is insufficient evidence for the operational paths.
+The maintainer recorded dev deployment and live evidence before closing Phase 1. Repository tests passing or Terraform apply completing alone is insufficient evidence for operational paths.
 
 - Observe a scheduled poll, a new raw object, and a processor completion. Verify logs are still delivered to all three function-specific groups after narrowing IAM. A successful snapshot with no new accepted sightings is valid; freshness measures successful processing, not new sightings.
 - Verify `/health`, latest sightings, combined region/species/date filters, and pagination through the deployed application. Confirm date-filtered requests return successful responses and observations from the requested UK calendar day. Check the homepage displays data and its processing timestamp.
 - Confirm both queues have encryption and 14-day retention, each Lambda has its correct failure destination, log groups retain 30 days, and the completion metric receives data.
-- In separately approved dev failure tests, confirm exhausted asynchronous poller and processor executions reach their own queues, and alarm transitions publish to the operational SNS topic. Also verify EventBridge delivery failures reach the poller queue. Use synthetic events and a planned recovery procedure; do not change credentials or expose source records to manufacture a failure.
-- Verify the stale-processing alarm and recovery behaviour in a separately approved test. Record observed timing; CloudWatch evaluation and missing-data handling can delay state changes beyond the nominal three 15-minute periods.
+- A synthetic malformed asynchronous processor event was invoked in dev. It failed three times, was delivered to the processor DLQ with `RetriesExhausted`, raised the processor error and DLQ alarms, and produced a successful SNS operational-topic action. The synthetic message was inspected and deleted; normal raw-object processing also continued successfully during the test.
+- Poller execution-failure, EventBridge delivery-failure, and stale-processing simulations were deliberately left as optional future resilience drills. They are not prerequisites for the Phase 1 product sign-off; if run later, use synthetic events and a planned recovery procedure, do not change credentials or expose source records to manufacture a failure, and record CloudWatch's observed timing.
 - Email is optional. If configured, confirm the subscription and verify a problem notification reaches that address. Routine successful heartbeats must not generate notifications.
 
 For manual replay, first fix the cause and determine the message envelope. EventBridge DLQ messages carry the original event with delivery metadata in message attributes; Lambda on-failure records wrap it in `requestPayload`. Replay only the original event to the correct function, verify success, and only then remove that specific DLQ message. Processor replay requires its raw S3 object to still exist; queue retention of 14 days does not extend raw S3 retention of one day. If the raw object has expired, a new poll can only recover observations still available from the upstream one-day window. Do not attach these queues directly to the current handlers as SQS event sources: their event envelopes differ. Never purge an entire queue as a substitute for reviewing failed events.
 
-Update `ROADMAP.md` with the recorded live results when these checks have passed. Until then, distinguish implemented code, reported deployments, and verified operational acceptance.
+`ROADMAP.md` records the completed dev acceptance evidence. Continue to distinguish implemented code, deployed infrastructure, and directly verified behaviour in future phases.
 
 ## Python changes
 

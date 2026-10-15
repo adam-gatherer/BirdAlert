@@ -78,6 +78,12 @@ Every eBird request now explicitly includes `back=1`, including retries. Rationa
 
 Terraform supplies each Lambda role with the ARN of its own pre-created log group. Logging policies permit only stream creation and event writes below that group, with no execution-role permission to create groups. Rationale: Terraform owns infrastructure creation and retention, while runtime roles receive only the permissions needed to write their own logs. Mocked Terraform tests check configured statement actions and resources for all three roles; these are local regression checks, not evidence of live log delivery.
 
+## 2026-10-15 - Phase 1 operational acceptance and closure
+
+Phase 1 was closed after the latest corrections were deployed to dev and both normal processing and a bounded failure path were observed live. The homepage showed processed sightings and its last-successful-processing time. A synthetic malformed asynchronous processor event then failed three times, reached the processor DLQ with Lambda's `RetriesExhausted` condition, caused the processor error and DLQ alarms to transition, and resulted in CloudWatch successfully executing the SNS operational-topic action. The synthetic message was reviewed and removed; a normal raw-object processor completion also occurred during the exercise.
+
+Rationale: this verifies the highest-value end-to-end failure path without manufacturing an upstream credential outage, interrupting the scheduler, or leaving failed data in the system. Poller execution-failure, EventBridge delivery-failure, and stale-processing drills remain useful future operational exercises, but their absence does not mean the Phase 1 product or its Terraform-provisioned controls are incomplete. Phase 2 remains a separate scope decision: authentication, watchlists, location/radius design, and user notifications have not been started.
+
 ## 2026-10-14 - UK calendar-date API filter
 
 Accepted and implemented locally. The `date` query parameter is ISO 8601 `YYYY-MM-DD` and selects a calendar day in `Europe/London`. DynamoDB retains timestamps in UTC, and the read Lambda converts the start and end of the requested UK day to UTC before querying.

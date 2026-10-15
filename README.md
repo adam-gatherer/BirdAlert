@@ -1,7 +1,7 @@
 # BirdAlert 𓅪
 A UK-first AWS portfolio application that ingests notable eBird sightings and displays public reports on a minimal website. Terraform provisions the infrastructure. Phase 1 demonstrates ingestion, validation, storage, a read API, static hosting, and operational failure handling; personalised user alerts belong to Phase 2.
 
-Phase 1 is implemented in the repository. Deployment of the latest corrections and recorded live failure-path checks remain prerequisites for completion; local tests alone do not establish successful AWS operation. See the [roadmap](docs/ROADMAP.md) for current status.
+Phase 1 is complete. The dev deployment and its normal ingestion path, public homepage freshness indicator, processor retry/DLQ path, CloudWatch alarms, and SNS alarm action were live-verified on 15 October 2026. See the [roadmap](docs/ROADMAP.md) for the recorded evidence and Phase 2 boundary.
 
 ## How it works
 
