@@ -83,9 +83,12 @@ These scope decisions are accepted. Exact JSON response fields, status codes, cu
 
 ## Milestone 7 - Operational hardening
 
-- Add structured logging and deliberate failure/retry behavior.
+- Add three bounded exponential-backoff retries for transient eBird network, `429`, and `5xx` failures; do not retry invalid data or non-transient client errors.
+- Add separate encrypted 14-day SQS DLQs for exhausted poller and processor deliveries. Keep replay manual in Phase 1.
+- Add 30-day CloudWatch log retention and high-priority alarms for poller/processor errors, DLQ messages, sustained API `5xx` errors, and no successful processor completion for 45 minutes.
+- Publish alarms to an SNS operational topic. Make the administrator email subscription optional Terraform configuration; do not notify on routine successful 15-minute heartbeats.
 - Review IAM, encryption, raw retention, environment configuration, and deployment procedure.
-- Run relevant local tests and safe validation; report live AWS state only if actually checked.
+- Add focused failure/retry and Terraform tests; run relevant local validation and report live AWS state only if actually checked.
 
 ## Phase 2 - Users and personalised alerts
 

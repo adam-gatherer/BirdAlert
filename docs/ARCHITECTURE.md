@@ -22,6 +22,9 @@ EventBridge (15-minute heartbeat)
     -> browser / API clients
 
 CloudFront -> private S3 site bucket (Origin Access Control) -> browser
+
+EventBridge/Lambda failed deliveries -> separate private SQS DLQs
+CloudWatch high-priority alarms -> SNS topic -> optional confirmed administrator email
 ```
 
 The EventBridge schedule remains a 15-minute ingestion heartbeat, but the processor does not filter by the observation time in that interval. Each 24-hour response is validated, then a well-formed non-private sighting is persisted only when BirdAlert first sees its canonical identity. This captures public reports submitted after their observation time while avoiding repeated writes from overlapping eBird responses. Store the fields the application needs, at minimum species, sighting timestamp, location, validation status, and an internal `first_seen_at` ingestion timestamp on the canonical record. Keep the complete raw response in S3 rather than copying it wholesale into DynamoDB. Reject malformed records and make processing idempotent so the master database contains only unique sightings. Retain well-formed eBird records with `obsValid: false` as `provisional`, rather than misrepresenting them as validated.
@@ -36,7 +39,9 @@ The processor batch-reads canonical identities before creating records, so repea
 
 Use one private S3 raw bucket with region-based prefixes and one separate private S3 site bucket. Configure lifecycle expiry for raw dumps; one day is the current configured retention, not an immutable constraint. CloudFront has access only to the site bucket through Origin Access Control. DynamoDB is the master database. Terraform provisions the infrastructure.
 
-Use least-privilege IAM, Parameter Store for secrets/configuration, encryption where appropriate, input validation, structured logging, and observable, idempotent processing. Keep the design serverless, modular, and cost-conscious.
+Use least-privilege IAM, Parameter Store for secrets/configuration, encryption where appropriate, input validation, structured logging, and observable, idempotent processing. CloudWatch logs retain 30 days. The poller retries transient upstream network, `429`, and `5xx` failures three times with bounded exponential backoff; invalid data and non-transient client errors fail visibly. Exhausted poller and processor deliveries go to distinct encrypted SQS DLQs with 14-day retention for investigation and manual replay. Keep the design serverless, modular, and cost-conscious.
+
+CloudWatch alarms cover poller/processor errors, non-empty DLQs, sustained API `5xx` errors, and no processor completion for 45 minutes. They notify a dedicated SNS topic rather than users. An administrator email subscription is optional Terraform configuration and must be confirmed outside Terraform; routine successful 15-minute heartbeats do not generate notifications.
 
 ## Intended API
 

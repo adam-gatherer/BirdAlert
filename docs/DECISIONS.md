@@ -60,6 +60,14 @@ Accepted and implemented locally. After a processor invocation successfully hand
 
 Rationale: a poll start or successful eBird response does not prove that new data has passed validation, persistence, and the read path. Recording processor completion provides an honest, low-cost end-to-end freshness signal for visitors. A single status item adds one small DynamoDB write per successful raw object and one lightweight read per API request; it does not create a cache or duplicate sightings. It needs no table schema change because DynamoDB is schemaless, and the existing least-privilege processor and read permissions already allow `PutItem` and `GetItem` on this table.
 
+## 2026-10-15 - Operational failure handling and high-priority alerting
+
+Accepted for Milestone 7; not yet implemented. The poller will retry only transient upstream network, `429`, and `5xx` failures three times using bounded exponential backoff. Invalid payloads and non-transient client errors will fail visibly without retry. Exhausted poller and processor deliveries will be retained in separate encrypted SQS dead-letter queues for 14 days, with manual replay in Phase 1.
+
+CloudWatch logs will retain 30 days. High-priority CloudWatch alarms will cover poller/processor errors, non-empty dead-letter queues, sustained API `5xx` errors, and no processor completion for 45 minutes. Alarm actions will publish to an SNS operational topic. An administrator email subscription will be optional Terraform configuration and requires AWS's out-of-band recipient confirmation. Routine successful 15-minute heartbeats will not notify.
+
+Rationale: separate queues distinguish upstream-polling failures from raw-object processing failures, making diagnosis and safe replay clearer. Three retries balance recovery from brief eBird or network disruption against unnecessary repeat requests and cost. Retaining failed events makes failure observable without exposing their content through logs. Problem-only alerts provide useful operational signal without creating routine inbox noise; optional email keeps the deployment portable and avoids embedding administrator contact details in source control.
+
 ## 2026-10-14 - UK calendar-date API filter
 
 Accepted and implemented locally. The `date` query parameter is ISO 8601 `YYYY-MM-DD` and selects a calendar day in `Europe/London`. DynamoDB retains timestamps in UTC, and the read Lambda converts the start and end of the requested UK day to UTC before querying.

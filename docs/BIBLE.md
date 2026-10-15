@@ -27,6 +27,8 @@ Implement the complete ingestion, read API, and simple homepage:
 - Use `GET /sightings` with optional `region`, `species`, `date`, `limit`, and `cursor` query parameters. It returns the latest 10 sightings by default and at most 50 per request. Species lookup means filtering sightings by eBird species code; a separate species catalogue is not part of Phase 1.
 - Interpret `date` as an ISO 8601 `YYYY-MM-DD` calendar day in `Europe/London`. Processed timestamps remain UTC. Future regional expansion may add explicitly versioned or opt-in regional date/time semantics; do not accept ambiguous US-style date input in Phase 1.
 - A simple public homepage displays the 10 most recent sightings (species, location, timestamp) and the last successful end-to-end processing time by requesting the read API once when the page loads. It is served from a dedicated private S3 site bucket through CloudFront Origin Access Control; it does not poll in the background or cache API data.
+- Treat transient upstream failures deliberately: retry network failures, eBird `429` responses, and `5xx` responses a bounded three times; route exhausted poller and processor deliveries to separate private dead-letter queues for investigation and manual replay.
+- Use CloudWatch alarms for high-priority operational failures only: poller/processor errors, dead-letter queue messages, sustained API `5xx` errors, and no successful processing completion for 45 minutes. Send alarm notifications to an SNS topic; an administrator email subscription is optional and must be confirmed by its recipient. Do not notify on routine successful heartbeats.
 - Terraform provisions AWS infrastructure.
 
 ## High-level data flow
@@ -37,7 +39,7 @@ The exact processor invocation mechanism and database access pattern are impleme
 
 ## AWS and data
 
-Use EventBridge, Lambda, S3, DynamoDB, API Gateway, CloudFront, IAM, CloudWatch, Parameter Store, and Terraform. DynamoDB is the intended master database and should be designed for application queries. Store one canonical item per sighting plus small, purpose-built query items with timestamp sort keys for latest, region, species, and region-plus-species lookups. The canonical item records `first_seen_at`, the raw-object ingestion time at which BirdAlert first encountered the sighting; query items remain sorted by `observed_at` for user-facing recency. These query items contain only the fields needed to answer their access pattern and must not duplicate the raw eBird payload.
+Use EventBridge, Lambda, S3, SQS, DynamoDB, API Gateway, CloudFront, IAM, CloudWatch, SNS, Parameter Store, and Terraform. DynamoDB is the intended master database and should be designed for application queries. Store one canonical item per sighting plus small, purpose-built query items with timestamp sort keys for latest, region, species, and region-plus-species lookups. The canonical item records `first_seen_at`, the raw-object ingestion time at which BirdAlert first encountered the sighting; query items remain sorted by `observed_at` for user-facing recency. These query items contain only the fields needed to answer their access pattern and must not duplicate the raw eBird payload.
 
 The S3 lifecycle should expire old raw dumps. The current configured retention is one day, subject to deployment configuration.
 

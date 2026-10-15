@@ -25,6 +25,9 @@ The system shall:
 15. Have the health endpoint check the read function's connectivity and permission to access the master database, rather than returning function liveness alone.
 16. Interpret `date` as ISO 8601 `YYYY-MM-DD` for a calendar day in `Europe/London`, converting the requested range to UTC for stored timestamps. Do not accept ambiguous regional date formats in Phase 1.
 17. Record the completion time of each successfully processed raw response and return it as a nullable `last_successful_processing_at` field from `GET /sightings`; the homepage shall display it as the data-freshness indicator. This is not a cached sightings copy or browser-generated timestamp.
+18. Retry transient eBird network, `429`, and `5xx` failures at most three times with bounded exponential backoff; invalid payloads and non-transient client errors shall fail visibly rather than retrying.
+19. Send exhausted poller and processor deliveries to separate encrypted SQS dead-letter queues, each retaining messages for 14 days for investigation and manual replay.
+20. Retain CloudWatch logs for 30 days and create high-priority CloudWatch alarms for poller/processor errors, non-empty dead-letter queues, sustained API `5xx` errors, and no successful processor completion for 45 minutes. Alarms shall publish only to an SNS operational topic; an administrator email subscription is optional, and routine successful heartbeats shall not notify.
 
 The exact database key/index access pattern for the latest-10 query is an implementation concern for the read API milestone, not an additional product requirement. The homepage reads on page load only; backend correctness must not rely on a cached homepage copy.
 
