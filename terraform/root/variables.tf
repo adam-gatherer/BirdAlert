@@ -87,3 +87,10 @@ variable "health_throttle_burst" {
     error_message = "health_throttle_burst must be a whole number of at least one."
   }
 }
+
+variable "alarm_email" {
+  description = "Optional administrator email address subscribed to operational alarms."
+  type        = string
+  default     = null
+  nullable    = true
+}

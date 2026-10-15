@@ -12,3 +12,8 @@ variable "sightings_table_arn" {
   description = "ARN of the DynamoDB table the processor may write."
   type        = string
 }
+
+variable "processor_dlq_arn" {
+  description = "ARN of the processor failure destination queue."
+  type        = string
+}

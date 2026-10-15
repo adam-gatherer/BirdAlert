@@ -1,5 +1,6 @@
 import json
 import os
+import time
 import uuid
 from datetime import UTC, datetime
 
@@ -8,6 +9,10 @@ import requests
 
 ssm = boto3.client("ssm")
 s3 = boto3.client("s3")
+
+MAX_EBIRD_RETRIES = 3
+MAX_EBIRD_ATTEMPTS = 1 + MAX_EBIRD_RETRIES
+RETRY_DELAYS_SECONDS = (1, 2, 4)
 
 
 def configured_regions(value):
@@ -29,6 +34,45 @@ def raw_object_key(region, timestamp=None, unique_id=None):
     return f"{region}/{timestamp}-{unique_id}.json"
 
 
+def is_transient_ebird_error(error):
+    response = getattr(error, "response", None)
+    status_code = getattr(response, "status_code", None)
+    if isinstance(status_code, int):
+        return status_code == 429 or 500 <= status_code < 600
+
+    return error.__class__.__module__.startswith("requests")
+
+
+def eBird_response(region, api_key):
+    url = f"https://api.ebird.org/v2/data/obs/{region}/recent/notable"
+    for attempt in range(1, MAX_EBIRD_ATTEMPTS + 1):
+        try:
+            response = requests.get(
+                url,
+                headers={"X-eBirdApiToken": api_key},
+                timeout=30,
+            )
+            response.raise_for_status()
+            return response
+        except Exception as error:
+            if not is_transient_ebird_error(error) or attempt == MAX_EBIRD_ATTEMPTS:
+                raise
+
+            retry_delay = RETRY_DELAYS_SECONDS[attempt - 1]
+            print(
+                json.dumps(
+                    {
+                        "event": "poll_retry",
+                        "region": region,
+                        "attempt": attempt,
+                        "retry_delay_seconds": retry_delay,
+                        "error_type": type(error).__name__,
+                    }
+                )
+            )
+            time.sleep(retry_delay)
+
+
 def lambda_handler(event, context):
     regions = configured_regions(os.environ["EBIRD_REGIONS"])
     parameter_name = os.environ["PARAMETER_NAME"]
@@ -44,12 +88,7 @@ def lambda_handler(event, context):
 
     for region in regions:
         try:
-            response = requests.get(
-                f"https://api.ebird.org/v2/data/obs/{region}/recent/notable",
-                headers={"X-eBirdApiToken": api_key},
-                timeout=30,
-            )
-            response.raise_for_status()
+            response = eBird_response(region, api_key)
             data = response.json()
 
             object_key = raw_object_key(region)

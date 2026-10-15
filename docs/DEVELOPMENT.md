@@ -42,6 +42,8 @@ For an explicitly authorised Terraform development task, review:
 
 Do not apply destructive or production changes without explicit human approval.
 
+When Terraform begins managing a Lambda log group that was created by an earlier deployment, import that existing log group into Terraform state before `apply`; do not delete it merely to set retention. Use the stable Terraform resource address and the `/aws/lambda/<function-name>` log-group name for the active environment.
+
 Do not claim that AWS deployment succeeded unless it has actually been performed and verified.
 
 ## Python changes

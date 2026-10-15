@@ -28,6 +28,12 @@ class FakeResponse:
         return self.data
 
 
+class FakeHttpError(RuntimeError):
+    def __init__(self, status_code):
+        super().__init__(f"HTTP {status_code}")
+        self.response = SimpleNamespace(status_code=status_code)
+
+
 class PollerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -203,6 +209,58 @@ class PollerTests(unittest.TestCase):
                 self.app.lambda_handler({}, None)
 
         self.app.s3.put_object.assert_not_called()
+
+    @patch.dict(
+        "os.environ",
+        {
+            "EBIRD_REGIONS": "GB-ENG",
+            "PARAMETER_NAME": "/birdalert/dev/ebird/api-key",
+            "RAW_BUCKET": "birdalert-raw",
+        },
+        clear=True,
+    )
+    def test_transient_ebird_failure_retries_three_times(self):
+        responses = [
+            FakeResponse(b"error", None, status_error=FakeHttpError(503)),
+            FakeResponse(b"error", None, status_error=FakeHttpError(429)),
+            FakeResponse(b"error", None, status_error=FakeHttpError(500)),
+            FakeResponse(b"[]", []),
+        ]
+
+        with (
+            patch.object(self.app.requests, "get", side_effect=responses) as get,
+            patch.object(self.app.time, "sleep") as sleep,
+        ):
+            self.app.lambda_handler({}, None)
+
+        self.assertEqual(get.call_count, 4)
+        sleep.assert_has_calls([call(1), call(2), call(4)])
+
+    @patch.dict(
+        "os.environ",
+        {
+            "EBIRD_REGIONS": "GB-ENG",
+            "PARAMETER_NAME": "/birdalert/dev/ebird/api-key",
+            "RAW_BUCKET": "birdalert-raw",
+        },
+        clear=True,
+    )
+    def test_non_transient_ebird_failure_is_not_retried(self):
+        with (
+            patch.object(
+                self.app.requests,
+                "get",
+                return_value=FakeResponse(
+                    b"error", None, status_error=FakeHttpError(401)
+                ),
+            ) as get,
+            patch.object(self.app.time, "sleep") as sleep,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "GB-ENG"):
+                self.app.lambda_handler({}, None)
+
+        get.assert_called_once()
+        sleep.assert_not_called()
 
     @patch.dict(
         "os.environ",

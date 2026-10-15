@@ -17,3 +17,8 @@ variable "lambda_function_name" {
   description = "Name of the Lambda function to permit EventBridge to invoke."
   type        = string
 }
+
+variable "dead_letter_queue_arn" {
+  description = "ARN of the queue that receives exhausted EventBridge deliveries."
+  type        = string
+}

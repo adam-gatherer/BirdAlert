@@ -36,6 +36,12 @@ module "poller_lambda" {
   }
 }
 
+module "poller_dlq" {
+  source = "../modules/sqs-dlq"
+
+  queue_name = "${local.name_prefix}-poller-dlq"
+}
+
 # creates the parameter store loaded with our API key
 module "ebird_api_key" {
   source = "../modules/parameter-store"
@@ -59,10 +65,36 @@ module "poller_iam" {
 module "poller_schedule" {
   source = "../modules/eventbridge"
 
-  rule_name            = "${local.name_prefix}-poller-schedule"
-  schedule_expression  = "rate(15 minutes)"
-  lambda_function_arn  = module.poller_lambda.function_arn
-  lambda_function_name = module.poller_lambda.function_name
+  rule_name             = "${local.name_prefix}-poller-schedule"
+  schedule_expression   = "rate(15 minutes)"
+  lambda_function_arn   = module.poller_lambda.function_arn
+  lambda_function_name  = module.poller_lambda.function_name
+  dead_letter_queue_arn = module.poller_dlq.queue_arn
+}
+
+data "aws_iam_policy_document" "poller_dlq" {
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["events.amazonaws.com"]
+    }
+
+    actions   = ["sqs:SendMessage"]
+    resources = [module.poller_dlq.queue_arn]
+
+    condition {
+      test     = "ArnEquals"
+      variable = "aws:SourceArn"
+      values   = [module.poller_schedule.rule_arn]
+    }
+  }
+}
+
+resource "aws_sqs_queue_policy" "poller_dlq" {
+  queue_url = module.poller_dlq.queue_url
+  policy    = data.aws_iam_policy_document.poller_dlq.json
 }
 
 # processes each raw response after it lands in S3
@@ -81,6 +113,12 @@ module "processor_lambda" {
   }
 }
 
+module "processor_dlq" {
+  source = "../modules/sqs-dlq"
+
+  queue_name = "${local.name_prefix}-processor-dlq"
+}
+
 module "sightings_table" {
   source = "../modules/dynamodb"
 
@@ -93,6 +131,19 @@ module "processor_iam" {
   role_name           = "${local.name_prefix}-processor-role"
   bucket_arn          = module.raw_bucket.bucket_arn
   sightings_table_arn = module.sightings_table.table_arn
+  processor_dlq_arn   = module.processor_dlq.queue_arn
+}
+
+resource "aws_lambda_function_event_invoke_config" "processor" {
+  function_name                = module.processor_lambda.function_name
+  maximum_retry_attempts       = 2
+  maximum_event_age_in_seconds = 3600
+
+  destination_config {
+    on_failure {
+      destination = module.processor_dlq.queue_arn
+    }
+  }
 }
 
 # Serves bounded public read requests from DynamoDB; it never reads raw S3 data.
@@ -168,4 +219,119 @@ module "raw_object_processor" {
   bucket_arn           = module.raw_bucket.bucket_arn
   lambda_function_arn  = module.processor_lambda.function_arn
   lambda_function_name = module.processor_lambda.function_name
+}
+
+resource "aws_cloudwatch_log_group" "lambda" {
+  for_each = {
+    poller    = module.poller_lambda.function_name
+    processor = module.processor_lambda.function_name
+    read      = module.read_lambda.function_name
+  }
+
+  name              = "/aws/lambda/${each.value}"
+  retention_in_days = 30
+}
+
+resource "aws_cloudwatch_log_metric_filter" "processor_completed" {
+  name           = "${local.name_prefix}-processor-completed"
+  log_group_name = aws_cloudwatch_log_group.lambda["processor"].name
+  pattern        = "{ $.event = \"processing_completed\" }"
+
+  metric_transformation {
+    name      = "${local.name_prefix}-processor-completed"
+    namespace = "BirdAlert/Operations"
+    value     = "1"
+  }
+}
+
+resource "aws_sns_topic" "operational_alarms" {
+  name = "${local.name_prefix}-operational-alarms"
+}
+
+resource "aws_sns_topic_subscription" "alarm_email" {
+  count = var.alarm_email == null ? 0 : 1
+
+  topic_arn = aws_sns_topic.operational_alarms.arn
+  protocol  = "email"
+  endpoint  = var.alarm_email
+}
+
+resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
+  for_each = {
+    poller    = module.poller_lambda.function_name
+    processor = module.processor_lambda.function_name
+  }
+
+  alarm_name          = "${local.name_prefix}-${each.key}-errors"
+  alarm_description   = "BirdAlert ${each.key} Lambda has failed."
+  namespace           = "AWS/Lambda"
+  metric_name         = "Errors"
+  statistic           = "Sum"
+  period              = 900
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.operational_alarms.arn]
+
+  dimensions = {
+    FunctionName = each.value
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "dlq_messages" {
+  for_each = {
+    poller    = module.poller_dlq.queue_arn
+    processor = module.processor_dlq.queue_arn
+  }
+
+  alarm_name          = "${local.name_prefix}-${each.key}-dlq-messages"
+  alarm_description   = "BirdAlert ${each.key} DLQ contains failed events."
+  namespace           = "AWS/SQS"
+  metric_name         = "ApproximateNumberOfMessagesVisible"
+  statistic           = "Maximum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.operational_alarms.arn]
+
+  dimensions = {
+    QueueName = each.key == "poller" ? "${local.name_prefix}-poller-dlq" : "${local.name_prefix}-processor-dlq"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "api_5xx" {
+  alarm_name          = "${local.name_prefix}-api-5xx"
+  alarm_description   = "BirdAlert API has sustained server errors."
+  namespace           = "AWS/ApiGateway"
+  metric_name         = "5xx"
+  statistic           = "Sum"
+  period              = 900
+  evaluation_periods  = 1
+  threshold           = 3
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.operational_alarms.arn]
+
+  dimensions = {
+    ApiId = module.read_api.api_id
+    Stage = "$default"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "processor_stale" {
+  alarm_name          = "${local.name_prefix}-processor-stale"
+  alarm_description   = "BirdAlert has not completed raw-object processing for 45 minutes."
+  namespace           = "BirdAlert/Operations"
+  metric_name         = "${local.name_prefix}-processor-completed"
+  statistic           = "Sum"
+  period              = 900
+  evaluation_periods  = 3
+  datapoints_to_alarm = 3
+  threshold           = 1
+  comparison_operator = "LessThanThreshold"
+  treat_missing_data  = "breaching"
+  alarm_actions       = [aws_sns_topic.operational_alarms.arn]
 }

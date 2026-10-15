@@ -7,6 +7,15 @@ resource "aws_cloudwatch_event_rule" "poller" {
 resource "aws_cloudwatch_event_target" "poller" {
   rule = aws_cloudwatch_event_rule.poller.name
   arn  = var.lambda_function_arn
+
+  dead_letter_config {
+    arn = var.dead_letter_queue_arn
+  }
+
+  retry_policy {
+    maximum_event_age_in_seconds = 3600
+    maximum_retry_attempts       = 3
+  }
 }
 
 resource "aws_lambda_permission" "allow_eventbridge" {

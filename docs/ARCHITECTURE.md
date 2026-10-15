@@ -63,7 +63,7 @@ Cognito authenticates users; email is the username. Phase 2 retains the Bible's 
 
 ## Current implementation
 
-The active implementation covers Milestones 1 through 6 locally; final operational hardening remains.
+The active implementation covers Milestones 1 through 7 locally. Live AWS deployment remains separate from repository status.
 
 Implemented in repository configuration/code:
 
@@ -90,11 +90,10 @@ Implemented in repository configuration/code:
 - Focused tests for read queries, date conversion, cursor validation, health connectivity, and API errors.
 - Plain static homepage assets under `site/`, fetching the latest sightings once on page load and showing provisional reports honestly.
 - A fixed-key DynamoDB operational-status item written after successful processing, exposed by the read API, and rendered by the homepage as a UK-formatted data-freshness timestamp.
+- Three bounded retries for transient eBird network, `429`, and `5xx` failures, with structured retry logs that exclude credentials and raw data.
+- Separate SQS-managed-encrypted 14-day poller and processor DLQs. EventBridge routes exhausted poller deliveries to its DLQ; Lambda asynchronous failure handling routes exhausted processor invocations to its DLQ.
+- Managed 30-day Lambda log retention, a processor-completion log metric, and CloudWatch alarms for Lambda errors, DLQ messages, sustained API `5xx` errors, and 45-minute processing staleness. Alarm actions publish to an SNS topic with an optional administrator email subscription.
 - A separate private S3 site bucket, CloudFront distribution with Origin Access Control and HTTPS redirect, exact CloudFront-origin CORS, and Terraform-managed asset/config deployment. CloudFront uses the UK-suitable `PriceClass_100` and a five-minute static-asset cache lifetime.
-
-Not implemented in the active configuration/code:
-
-- Explicit retry/failure handling beyond the current visible errors and structured completion logs.
 
 Focused tests cover poller configuration/failure/key behavior, processor handling, persistence, deduplication, private-location exclusion, and the read API.
 

@@ -477,6 +477,31 @@ class ProcessorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "at least one record"):
             self.app.lambda_handler({}, None)
 
+    @patch.dict(os.environ, {"SIGHTINGS_TABLE": "birdalert-sightings"}, clear=True)
+    def test_processor_failure_log_does_not_include_event_data(self):
+        self.app.s3.get_object.side_effect = RuntimeError("unavailable")
+        event = {
+            "Records": [
+                {
+                    "s3": {
+                        "bucket": {"name": "birdalert-raw"},
+                        "object": {
+                            "key": "GB-ENG/20260930T101700.000000Z-sensitive.json"
+                        },
+                    }
+                }
+            ]
+        }
+
+        with patch("builtins.print") as output:
+            with self.assertRaisesRegex(RuntimeError, "unavailable"):
+                self.app.lambda_handler(event, None)
+
+        self.assertEqual(
+            json.loads(output.call_args.args[0]),
+            {"event": "processing_failed", "error_type": "RuntimeError"},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

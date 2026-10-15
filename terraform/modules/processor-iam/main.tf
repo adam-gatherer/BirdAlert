@@ -32,3 +32,13 @@ resource "aws_iam_role_policy_attachment" "sightings_write" {
   role       = aws_iam_role.processor.name
   policy_arn = aws_iam_policy.sightings_write.arn
 }
+
+resource "aws_iam_policy" "processor_dlq" {
+  name   = "${var.role_name}-processor-dlq"
+  policy = data.aws_iam_policy_document.processor_dlq.json
+}
+
+resource "aws_iam_role_policy_attachment" "processor_dlq" {
+  role       = aws_iam_role.processor.name
+  policy_arn = aws_iam_policy.processor_dlq.arn
+}

@@ -408,7 +408,21 @@ def lambda_handler(event, context):
     if not isinstance(event_records, list) or not event_records:
         raise ValueError("S3 event must contain at least one record")
 
-    results = [process_s3_record(record) for record in event_records]
+    results = []
+    for record in event_records:
+        try:
+            results.append(process_s3_record(record))
+        except Exception as error:
+            print(
+                json.dumps(
+                    {
+                        "event": "processing_failed",
+                        "error_type": type(error).__name__,
+                    }
+                )
+            )
+            raise
+
     return {
         "processed_objects": len(results),
         "accepted_records": sum(len(result["accepted"]) for result in results),

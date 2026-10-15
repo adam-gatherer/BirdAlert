@@ -43,3 +43,11 @@ data "aws_iam_policy_document" "sightings_write" {
     resources = [var.sightings_table_arn]
   }
 }
+
+data "aws_iam_policy_document" "processor_dlq" {
+  statement {
+    effect    = "Allow"
+    actions   = ["sqs:SendMessage"]
+    resources = [var.processor_dlq_arn]
+  }
+}
