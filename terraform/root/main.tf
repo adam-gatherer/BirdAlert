@@ -61,6 +61,8 @@ module "poller_iam" {
 
   role_name = "${local.name_prefix}-poller-role"
 
+  log_group_arn = aws_cloudwatch_log_group.lambda["poller"].arn
+
   parameter_arn = module.ebird_api_key.parameter_arn
 
   bucket_arn = module.raw_bucket.bucket_arn
@@ -152,6 +154,7 @@ module "processor_iam" {
   source = "../modules/processor-iam"
 
   role_name           = "${local.name_prefix}-processor-role"
+  log_group_arn       = aws_cloudwatch_log_group.lambda["processor"].arn
   bucket_arn          = module.raw_bucket.bucket_arn
   sightings_table_arn = module.sightings_table.table_arn
   processor_dlq_arn   = module.processor_dlq.queue_arn
@@ -190,6 +193,7 @@ module "read_iam" {
   source = "../modules/read-iam"
 
   role_name           = "${local.name_prefix}-read-role"
+  log_group_arn       = aws_cloudwatch_log_group.lambda["read"].arn
   sightings_table_arn = module.sightings_table.table_arn
 }
 

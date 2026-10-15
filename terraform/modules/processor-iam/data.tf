@@ -15,11 +15,10 @@ data "aws_iam_policy_document" "lambda_logging" {
   statement {
     effect = "Allow"
     actions = [
-      "logs:CreateLogGroup",
       "logs:CreateLogStream",
       "logs:PutLogEvents",
     ]
-    resources = ["*"]
+    resources = ["${trimsuffix(var.log_group_arn, ":*")}:log-stream:*"]
   }
 }
 

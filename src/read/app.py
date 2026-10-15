@@ -181,9 +181,11 @@ def get_sightings(parameters):
         "Limit": parse_limit(parameters.get("limit")),
     }
     if bounds:
-        request["KeyConditionExpression"] += " AND #query_sort >= :start AND #query_sort < :end"
+        request["KeyConditionExpression"] += " AND #query_sort BETWEEN :start AND :end"
         request["ExpressionAttributeNames"]["#query_sort"] = "query_sort"
         values[":start"] = {"S": f"{bounds[0]}#"}
+        # Every real next-day key has a non-empty ID after this prefix, so it
+        # sorts after the inclusive BETWEEN upper bound and remains excluded.
         values[":end"] = {"S": f"{bounds[1]}#"}
     cursor = decode_cursor(parameters.get("cursor"), key)
     if cursor:

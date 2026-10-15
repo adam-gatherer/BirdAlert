@@ -99,11 +99,13 @@ class PollerTests(unittest.TestCase):
                 call(
                     "https://api.ebird.org/v2/data/obs/GB-ENG/recent/notable",
                     headers={"X-eBirdApiToken": "test-api-key"},
+                    params={"back": 1},
                     timeout=30,
                 ),
                 call(
                     "https://api.ebird.org/v2/data/obs/GB-SCT/recent/notable",
                     headers={"X-eBirdApiToken": "test-api-key"},
+                    params={"back": 1},
                     timeout=30,
                 ),
             ]
@@ -235,6 +237,12 @@ class PollerTests(unittest.TestCase):
 
         self.assertEqual(get.call_count, 4)
         sleep.assert_has_calls([call(1), call(2), call(4)])
+        self.assertTrue(
+            all(
+                request.kwargs["params"] == {"back": 1}
+                for request in get.call_args_list
+            )
+        )
 
     @patch.dict(
         "os.environ",

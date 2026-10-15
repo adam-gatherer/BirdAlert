@@ -10,7 +10,7 @@ The system shall:
 
 1. Run a polling heartbeat every 15 minutes.
 2. Support one or more valid eBird region codes supplied as deployment configuration. Development may configure `GB-ENG`; the repository must not invent a definitive deployment region list.
-3. Retrieve the eBird previous-24-hour response for each configured region.
+3. Retrieve the eBird one-day response for each configured region by explicitly supplying `back=1`; do not depend on the upstream default lookback.
 4. Store each complete raw response in one S3 bucket using region-based prefixes.
 5. Apply lifecycle expiry to raw dumps. One day is the current configured retention, configurable rather than an immutable architecture requirement.
 6. Validate each previous-24-hour response and persist a well-formed non-private sighting only when BirdAlert first sees its canonical identity. The 15-minute schedule is an ingestion heartbeat, not an observation-time filter; do not copy the full raw response to the master database.
@@ -36,6 +36,7 @@ The exact database key/index access pattern for the latest-10 query is an implem
 The system shall:
 
 - use least-privilege IAM;
+- restrict Lambda logging to `logs:CreateLogStream` and `logs:PutLogEvents` on each function's own log streams; Terraform creates the log groups;
 - use Parameter Store for secrets and configuration;
 - encrypt storage where appropriate;
 - validate external input;

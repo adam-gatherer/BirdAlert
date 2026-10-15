@@ -3,6 +3,11 @@ variable "role_name" {
   type        = string
 }
 
+variable "log_group_arn" {
+  description = "ARN of the Terraform-managed log group this function may write to."
+  type        = string
+}
+
 variable "parameter_arn" {
   description = "ARN of the eBird API key parameter."
   type        = string

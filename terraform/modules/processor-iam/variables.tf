@@ -3,6 +3,11 @@ variable "role_name" {
   type        = string
 }
 
+variable "log_group_arn" {
+  description = "ARN of the Terraform-managed log group this function may write to."
+  type        = string
+}
+
 variable "bucket_arn" {
   description = "ARN of the raw S3 bucket the processor may read."
   type        = string

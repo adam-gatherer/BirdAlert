@@ -12,8 +12,8 @@ data "aws_iam_policy_document" "lambda_assume_role" {
 data "aws_iam_policy_document" "lambda_logging" {
   statement {
     effect    = "Allow"
-    actions   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
-    resources = ["*"]
+    actions   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+    resources = ["${trimsuffix(var.log_group_arn, ":*")}:log-stream:*"]
   }
 }
 

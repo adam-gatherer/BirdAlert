@@ -15,7 +15,7 @@ Build a serverless-first, modular, observable, low-operational-cost application 
 Implement the complete ingestion, read API, and simple homepage:
 
 - A 15-minute heartbeat polls configured eBird regions. Deployment configuration supplies one or more valid eBird region codes; development may use `GB-ENG`. Do not assume or embed a definitive deployment region list.
-- eBird provides the previous 24 hours of UK sightings. Each poll stores the complete raw response in one S3 bucket, under a region-based prefix.
+- Request the previous day of UK sightings from eBird explicitly with `back=1`. Each poll stores the complete raw response in one S3 bucket, under a region-based prefix.
 - S3 is the raw landing area. The current lifecycle configuration retains raw data for one day; this remains a deployment/configuration choice, not an immutable architecture constraint.
 - Processing validates each 24-hour response and persists a non-private sighting only when BirdAlert first sees its canonical identity. The 15-minute EventBridge cadence remains the ingestion heartbeat; it is not an observation-time filter. It must not copy the entire response into the master database.
 - Validate record shape and process well-formed records, rejecting malformed data and deduplicating so the master database contains only unique sightings. Retain eBird records with `obsValid: false` as `provisional`; do not present them as validated sightings.
@@ -52,6 +52,8 @@ The read API primarily serves BirdAlert's own homepage using processed DynamoDB 
 ## Security and quality
 
 Use least-privilege IAM, Parameter Store for secrets/configuration, encryption where appropriate, input validation, and structured logging. Processing should be idempotent. Preserve raw API responses in S3 for their configured retention period and keep invalid records out of the master model.
+
+Terraform creates each Lambda's log group before the function. Execution roles may create log streams and write events only inside their own group; log-group creation and retention management belong to Terraform.
 
 ## Phase 2 scope
 

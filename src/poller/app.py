@@ -50,6 +50,7 @@ def eBird_response(region, api_key):
             response = requests.get(
                 url,
                 headers={"X-eBirdApiToken": api_key},
+                params={"back": 1},
                 timeout=30,
             )
             response.raise_for_status()

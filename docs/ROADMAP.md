@@ -14,7 +14,9 @@ Not implemented: Phase 2 user and alerting features. Processor logs provide safe
 
 The poller configuration interface is `EBIRD_REGIONS` (comma-separated region codes), `PARAMETER_NAME` (environment-specific SSM parameter name), and `RAW_BUCKET`. Terraform supplies these Lambda environment variables. `terraform/environments/dev.tfvars` configures `GB-ENG`; deployment-specific region values remain the deployer's responsibility.
 
-## Milestone 1 - Configuration-driven polling (implemented in repository; not deployed)
+Completion-review corrections are implemented locally: date queries use a valid `BETWEEN` expression, eBird requests explicitly select `back=1`, and execution roles can log only to their own groups. Local regressions cover these corrections. Earlier dev deployments were reported by the maintainer; deployment of the latest corrections and live DLQ/alarm acceptance must still be recorded before Phase 1 sign-off. See [development and verification](DEVELOPMENT.md).
+
+## Milestone 1 - Configuration-driven polling (implemented in repository)
 
 Remove hard-coded region and environment assumptions from the poller.
 
@@ -29,14 +31,14 @@ Remove hard-coded region and environment assumptions from the poller.
 
 Acceptance: configuration supports one and multiple regions; dev continues to use `GB-ENG`; parameter path is not hard-coded; raw keys are region-prefixed and cannot collide within one second; successful responses are stored completely; failures are visible; focused tests cover configuration and key generation; Terraform is formatted/validated; docs describe the interface; no unrelated changes or secrets are introduced.
 
-## Milestone 2 - 15-minute heartbeat and raw retention (implemented in repository; not deployed)
+## Milestone 2 - 15-minute heartbeat and raw retention (implemented in repository)
 
 - Add the EventBridge 15-minute heartbeat and Lambda invocation permission.
 - Preserve the previous-24-hour eBird dump in the single raw S3 bucket with region prefixes.
 - Add configurable S3 lifecycle expiry. One day is the current configured retention, not an immutable architecture constraint.
 - Verify behavior without deploying or modifying production infrastructure.
 
-## Milestone 3 - First-seen processing and validation (implemented in repository; not deployed)
+## Milestone 3 - First-seen processing and validation (implemented in repository)
 
 - Treat the 15-minute EventBridge schedule as an ingestion heartbeat, not an observation-time filter.
 - Validate each 24-hour response and accept a well-formed non-private sighting when BirdAlert first sees its canonical identity.
@@ -45,14 +47,14 @@ Acceptance: configuration supports one and multiple regions; dev continues to us
 - Keep full raw payloads in S3; do not copy the whole response into the master database.
 - Add focused tests for first-seen processing, repeat snapshots, and invalid records.
 
-## Milestone 4 - Deduplication and master database (implemented in repository; not deployed)
+## Milestone 4 - Deduplication and master database (implemented in repository)
 
 - Define how sightings are identified as unique and make processing idempotent.
 - Add the DynamoDB master database and persist only unique, well-formed processed sightings.
 - Grant least-privilege access and test persistence/deduplication behavior.
 - Exclude private sightings entirely from DynamoDB, superseding the earlier redaction-only implementation; keep complete raw responses in private S3.
 
-## Milestone 5 - Read API (implemented in repository; not deployed)
+## Milestone 5 - Read API (implemented in repository)
 
 - Add API Gateway and a Lambda read function.
 - Provide recent sightings, species lookup, region lookup, and health endpoints; support retrieval by region, species, and date.
@@ -67,21 +69,21 @@ Acceptance: configuration supports one and multiple regions; dev continues to us
 
 These scope decisions are accepted. Exact JSON response fields, status codes, cursor encoding, and query-record key values are implementation details to document with the Milestone 5 change. See [design decisions](DECISIONS.md).
 
-## Milestone 6 - Public homepage (implemented in repository; not deployed)
+## Milestone 6 - Public homepage (implemented in repository)
 
 - Add plain static homepage assets under `site/` that request the 10 most recent sightings from the read API when the page loads and display species, location, and timestamp.
 - Deploy the site through Terraform to a dedicated private S3 site bucket, delivered publicly through CloudFront Origin Access Control.
 - Configure the API's CORS origin for the CloudFront site; do not proxy or cache the API response through CloudFront.
 - Do not add authentication, sessions, cookies, background refresh, persistent application caching, or a heartbeat-written cache for the public Phase 1 homepage.
 
-## Milestone 6.5 - Data freshness visibility (implemented in repository; not deployed)
+## Milestone 6.5 - Data freshness visibility (implemented in repository)
 
 - After successfully processing a raw S3 object, write its completion time to one fixed-key DynamoDB operational-status item.
 - Return nullable `last_successful_processing_at` from `GET /sightings` and display it on the homepage in UK time.
 - Do not treat poll initiation, browser load time, or a successful poll that has not completed processing as evidence that displayed data is fresh.
 - Do not add a cache, new AWS service, table schema change, or background browser polling for this indicator.
 
-## Milestone 7 - Operational hardening (implemented in repository; not deployed)
+## Milestone 7 - Operational hardening (implemented in repository; live acceptance pending)
 
 - Add three bounded exponential-backoff retries for transient eBird network, `429`, and `5xx` failures; do not retry invalid data or non-transient client errors.
 - Add separate encrypted 14-day SQS DLQs for exhausted poller and processor deliveries. Keep replay manual in Phase 1.

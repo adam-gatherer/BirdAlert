@@ -4,6 +4,7 @@ import json
 import sys
 import types
 import unittest
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -133,6 +134,50 @@ class ReadTests(unittest.TestCase):
                 status, _ = self.call(event("/sightings", parameters))
                 self.assertEqual(status, 400)
         self.app.dynamodb.query.assert_not_called()
+
+    def test_date_ranges_use_one_supported_sort_key_condition(self):
+        cases = (
+            ("2026-01-15", "2026-01-15T00:00:00Z", "2026-01-16T00:00:00Z"),
+            ("2026-10-14", "2026-10-13T23:00:00Z", "2026-10-14T23:00:00Z"),
+            ("2026-03-29", "2026-03-29T00:00:00Z", "2026-03-29T23:00:00Z"),
+            ("2026-10-25", "2026-10-24T23:00:00Z", "2026-10-26T00:00:00Z"),
+        )
+        self.app.dynamodb.query.return_value = {"Items": []}
+
+        for day, expected_start, expected_end in cases:
+            with self.subTest(day=day):
+                status, _ = self.call(event("/sightings", {"date": day}))
+
+                self.assertEqual(status, 200)
+                request = self.app.dynamodb.query.call_args.kwargs
+                self.assertEqual(
+                    request["KeyConditionExpression"],
+                    "#query_key = :query_key AND #query_sort BETWEEN :start AND :end",
+                )
+                values = request["ExpressionAttributeValues"]
+                self.assertEqual(values[":start"], {"S": f"{expected_start}#"})
+                self.assertEqual(values[":end"], {"S": f"{expected_end}#"})
+
+                # DynamoDB BETWEEN is inclusive. Real keys append a non-empty
+                # canonical ID, so next-day midnight must sort above the bound.
+                start = values[":start"]["S"]
+                end = values[":end"]["S"]
+                for record_id in ("0" * 64, "f" * 64):
+                    self.assertTrue(start <= f"{expected_start}#{record_id}" <= end)
+                    self.assertFalse(start <= f"{expected_end}#{record_id}" <= end)
+
+                for boundary, expected_inside in (
+                    (expected_start, False),
+                    (expected_end, True),
+                ):
+                    preceding_second = datetime.fromisoformat(boundary) - timedelta(
+                        seconds=1
+                    )
+                    timestamp = preceding_second.astimezone(UTC).isoformat().replace(
+                        "+00:00", "Z"
+                    )
+                    key = f"{timestamp}#{'a' * 64}"
+                    self.assertEqual(start <= key <= end, expected_inside)
 
     def test_cursor_is_returned_when_dynamodb_has_more_results(self):
         key = {

@@ -61,6 +61,45 @@ For the Milestone 7 poller retry-budget and failure-destination correction, revi
 
 Run `terraform -chdir=terraform/root test` from the repository root to check poller failure-destination wiring and timeout budgets using mocked providers and isolated test state. These tests do not contact AWS or deploy resources. They still require the providers and existing Lambda package files to be available locally.
 
+## Deploying the completion-review corrections
+
+The read Lambda date-filter correction and the poller `back=1` correction change application code, so rebuild their deployment packages before Terraform planning. From the repository root, with the project's Python environment active:
+
+```powershell
+python scripts/build_poller.py
+python scripts/build_read.py
+terraform -chdir=terraform/root init
+terraform -chdir=terraform/root plan -var-file="../environments/dev.tfvars"
+```
+
+Review the plan, then run the usual human-approved apply. The expected changes are poller/read package hashes and the three scoped logging policies; any outstanding earlier corrections may also appear. No replacement of the sighting table, raw bucket, site bucket, or CloudFront distribution is needed for these corrections. Keep the processor package available locally even if it does not need rebuilding. Use the existing ignored secret configuration or normal variable input; never copy secrets into these commands or tracked files.
+
+Run local checks from the repository root:
+
+```powershell
+python -m unittest discover -s tests
+terraform -chdir=terraform/root test
+terraform -chdir=terraform fmt -check -recursive
+terraform -chdir=terraform/root validate
+```
+
+Run `terraform init` again if Terraform reports uninstalled local test modules. The logging-policy tests inspect the configured actions and resource scope; mocked providers do not prove live IAM authorisation or notification delivery.
+
+## Phase 1 live acceptance
+
+Record the environment, deployed revision, time, and result of each check before closing Phase 1. Repository tests passing or Terraform apply completing alone is insufficient evidence for the operational paths.
+
+- Observe a scheduled poll, a new raw object, and a processor completion. Verify logs are still delivered to all three function-specific groups after narrowing IAM. A successful snapshot with no new accepted sightings is valid; freshness measures successful processing, not new sightings.
+- Verify `/health`, latest sightings, combined region/species/date filters, and pagination through the deployed application. Confirm date-filtered requests return successful responses and observations from the requested UK calendar day. Check the homepage displays data and its processing timestamp.
+- Confirm both queues have encryption and 14-day retention, each Lambda has its correct failure destination, log groups retain 30 days, and the completion metric receives data.
+- In separately approved dev failure tests, confirm exhausted asynchronous poller and processor executions reach their own queues, and alarm transitions publish to the operational SNS topic. Also verify EventBridge delivery failures reach the poller queue. Use synthetic events and a planned recovery procedure; do not change credentials or expose source records to manufacture a failure.
+- Verify the stale-processing alarm and recovery behaviour in a separately approved test. Record observed timing; CloudWatch evaluation and missing-data handling can delay state changes beyond the nominal three 15-minute periods.
+- Email is optional. If configured, confirm the subscription and verify a problem notification reaches that address. Routine successful heartbeats must not generate notifications.
+
+For manual replay, first fix the cause and determine the message envelope. EventBridge DLQ messages carry the original event with delivery metadata in message attributes; Lambda on-failure records wrap it in `requestPayload`. Replay only the original event to the correct function, verify success, and only then remove that specific DLQ message. Processor replay requires its raw S3 object to still exist; queue retention of 14 days does not extend raw S3 retention of one day. If the raw object has expired, a new poll can only recover observations still available from the upstream one-day window. Do not attach these queues directly to the current handlers as SQS event sources: their event envelopes differ. Never purge an entire queue as a substitute for reviewing failed events.
+
+Update `ROADMAP.md` with the recorded live results when these checks have passed. Until then, distinguish implemented code, reported deployments, and verified operational acceptance.
+
 ## Python changes
 
 For Python changes:

@@ -70,6 +70,14 @@ Rationale: separate queues distinguish upstream-polling failures from raw-object
 
 Completion correction: an EventBridge DLQ captures failure to deliver an event to Lambda; it cannot capture an error raised after Lambda accepts that event. The poller therefore also has a Lambda asynchronous failure destination pointing to the same poller DLQ, with queue-scoped `sqs:SendMessage` permission. Both poller and processor asynchronous configurations permit two execution retries with a one-hour event age, independently of the three eBird request retries. The poller timeout now allows five minutes per configured region, capped at fifteen minutes, instead of the shared 30-second default. This gives the current deployment room to complete requests and backoff; it does not reserve capacity or increase billing for normal quick invocations. Revisit the budget before expanding to larger region sets.
 
+## 2026-10-15 - Phase 1 completion-review corrections
+
+Implemented locally; deployment and live acceptance are separate. Date-filtered queries now use one supported DynamoDB `BETWEEN` sort-key condition. Prefix bounds keep the next UK day excluded even though `BETWEEN` includes its endpoints. Regression tests cover midnight inclusion/exclusion and 23-hour and 25-hour UK days. Rationale: the API must honour its calendar-day contract using expressions the actual database supports, rather than relying on permissive mocks.
+
+Every eBird request now explicitly includes `back=1`, including retries. Rationale: the agreed one-day upstream window must not depend on a service default. First-seen ingestion and previously retained sightings remain unchanged; this corrects request configuration without deleting existing data.
+
+Terraform supplies each Lambda role with the ARN of its own pre-created log group. Logging policies permit only stream creation and event writes below that group, with no execution-role permission to create groups. Rationale: Terraform owns infrastructure creation and retention, while runtime roles receive only the permissions needed to write their own logs. Mocked Terraform tests check configured statement actions and resources for all three roles; these are local regression checks, not evidence of live log delivery.
+
 ## 2026-10-14 - UK calendar-date API filter
 
 Accepted and implemented locally. The `date` query parameter is ISO 8601 `YYYY-MM-DD` and selects a calendar day in `Europe/London`. DynamoDB retains timestamps in UTC, and the read Lambda converts the start and end of the requested UK day to UTC before querying.
