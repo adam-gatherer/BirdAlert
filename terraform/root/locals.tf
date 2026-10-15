@@ -2,6 +2,12 @@
 locals {
   name_prefix = "${var.project_name}-${var.environment}"
 
+  lambda_function_names = {
+    poller    = "${local.name_prefix}-poller"
+    processor = "${local.name_prefix}-processor"
+    read      = "${local.name_prefix}-read"
+  }
+
   site_directory   = "${path.module}/../../site"
   site_asset_files = toset([for file in fileset("${path.module}/../../site", "**") : file if file != "config.js.tftpl"])
   site_content_types = {

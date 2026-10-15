@@ -44,6 +44,17 @@ Do not apply destructive or production changes without explicit human approval.
 
 When Terraform begins managing a Lambda log group that was created by an earlier deployment, import that existing log group into Terraform state before `apply`; do not delete it merely to set retention. Use the stable Terraform resource address and the `/aws/lambda/<function-name>` log-group name for the active environment.
 
+The root configuration creates log groups before their Lambda functions to prevent automatic log-group creation from racing Terraform on a fresh deployment. Existing untracked groups still require import. After a partial apply, only import groups Terraform still plans to create; already tracked groups need no further import.
+
+For the existing dev read log group, run these commands from `terraform/root` in Windows PowerShell. `--%` preserves the quoted resource key for Terraform, and the variable file supplies the deployment configuration:
+
+```powershell
+terraform --% import -var-file="../environments/dev.tfvars" aws_cloudwatch_log_group.lambda[\"read\"] "/aws/lambda/birdalert-dev-read"
+terraform plan -var-file="../environments/dev.tfvars"
+```
+
+The import must report success. Review the plan before applying; the imported log group should no longer be listed for creation. If an old saved plan was used, discard it and create a fresh plan after import.
+
 Do not claim that AWS deployment succeeded unless it has actually been performed and verified.
 
 ## Python changes

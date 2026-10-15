@@ -19,7 +19,9 @@ module "raw_bucket" {
 module "poller_lambda" {
   source = "../modules/lambda"
 
-  function_name = "${local.name_prefix}-poller"
+  depends_on = [aws_cloudwatch_log_group.lambda["poller"]]
+
+  function_name = local.lambda_function_names.poller
 
   role_arn = module.poller_iam.role_arn
 
@@ -101,7 +103,9 @@ resource "aws_sqs_queue_policy" "poller_dlq" {
 module "processor_lambda" {
   source = "../modules/lambda"
 
-  function_name = "${local.name_prefix}-processor"
+  depends_on = [aws_cloudwatch_log_group.lambda["processor"]]
+
+  function_name = local.lambda_function_names.processor
   role_arn      = module.processor_iam.role_arn
   filename      = "../../build/processor.zip"
   handler       = "app.lambda_handler"
@@ -150,7 +154,9 @@ resource "aws_lambda_function_event_invoke_config" "processor" {
 module "read_lambda" {
   source = "../modules/lambda"
 
-  function_name = "${local.name_prefix}-read"
+  depends_on = [aws_cloudwatch_log_group.lambda["read"]]
+
+  function_name = local.lambda_function_names.read
   role_arn      = module.read_iam.role_arn
   filename      = "../../build/read.zip"
   handler       = "app.lambda_handler"
@@ -222,11 +228,8 @@ module "raw_object_processor" {
 }
 
 resource "aws_cloudwatch_log_group" "lambda" {
-  for_each = {
-    poller    = module.poller_lambda.function_name
-    processor = module.processor_lambda.function_name
-    read      = module.read_lambda.function_name
-  }
+  # Create groups before their functions can be invoked and auto-create them.
+  for_each = local.lambda_function_names
 
   name              = "/aws/lambda/${each.value}"
   retention_in_days = 30
