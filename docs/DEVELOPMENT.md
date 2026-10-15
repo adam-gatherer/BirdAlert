@@ -56,6 +56,8 @@ For Python changes:
 - avoid hard-coded environment-specific configuration;
 - add focused tests for new behaviour where practical.
 
+Build all Lambda deployment packages from the repository root with `python build_lambdas.py`. The launcher runs the poller, processor, and read build scripts in sequence and stops on the first failure.
+
 ## Secrets
 
 Never commit credentials.
