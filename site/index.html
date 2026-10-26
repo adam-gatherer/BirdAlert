@@ -3,31 +3,98 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="The latest notable bird sightings recorded by BirdAlert.">
+    <meta name="description" content="Recent notable bird sightings from the BirdAlert UK feed.">
     <title>BirdAlert | Latest UK sightings</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
-    <main>
-      <h1>BirdAlert</h1>
-      <p>Latest notable bird sightings from the UK BirdAlert feed.</p>
+    <div class="page-shell">
+      <header class="hero" aria-labelledby="page-title">
+        <div class="brand-lockup">
+          <span class="brand-mark" aria-hidden="true">BA</span>
+          <span class="brand-name">BirdAlert</span>
+        </div>
+        <div class="hero-content">
+          <p class="eyebrow">UK sightings <span aria-hidden="true">&middot;</span> event-driven</p>
+          <h1 id="page-title">Bird sightings worth knowing about.</h1>
+          <p class="hero-copy">
+            A clear view of the latest notable reports from the BirdAlert feed.
+          </p>
+        </div>
+        <div class="hero-signal" aria-label="Live data is loaded when this page opens">
+          <span class="signal-dot" aria-hidden="true"></span>
+          Live data
+        </div>
+      </header>
 
-      <hr>
+      <main>
+        <section class="live-section" aria-labelledby="live-data-title">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">The latest from the feed</p>
+              <h2 id="live-data-title">Live sightings</h2>
+            </div>
+            <p id="freshness" class="freshness">Data freshness: checking...</p>
+          </div>
 
-      <h2>Live data</h2>
-      <p id="status" class="status" role="status">Loading sightings...</p>
-      <p id="freshness">Data freshness: checking...</p>
-      <table>
-        <thead>
-          <tr>
-            <th scope="col">Species</th>
-            <th scope="col">Location</th>
-            <th scope="col">Observed</th>
-          </tr>
-        </thead>
-        <tbody id="sightings" aria-live="polite"></tbody>
-      </table>
-    </main>
+          <div class="sightings-card">
+            <p id="status" class="status" role="status">Loading sightings...</p>
+            <div class="table-wrap">
+              <table>
+                <caption class="visually-hidden">Latest BirdAlert sightings</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Species</th>
+                    <th scope="col">Location</th>
+                    <th scope="col">Observed</th>
+                    <th scope="col">Status</th>
+                  </tr>
+                </thead>
+                <tbody id="sightings" aria-live="polite"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <aside class="data-key" aria-labelledby="data-key-title">
+            <div class="key-heading">
+              <p class="section-kicker">A quick guide</p>
+              <h2 id="data-key-title">Reading the feed</h2>
+            </div>
+            <dl class="key-list">
+              <div>
+                <dt><span class="validation-badge validated">Validated</span></dt>
+                <dd>eBird has marked the report as valid.</dd>
+              </div>
+              <div>
+                <dt><span class="validation-badge provisional">Provisional</span></dt>
+                <dd>A well-formed report still awaiting eBird validation.</dd>
+              </div>
+              <div>
+                <dt>Observed</dt>
+                <dd>When the bird was observed, shown in UK time.</dd>
+              </div>
+              <div>
+                <dt>Processed</dt>
+                <dd>When BirdAlert last completed a raw response end to end.</dd>
+              </div>
+            </dl>
+          </aside>
+        </section>
+
+        <section class="platform-overview" aria-labelledby="overview-title">
+          <p class="section-kicker">Under the hood</p>
+          <h2 id="overview-title">Built for a dependable data path.</h2>
+          <p>
+            Every 15 minutes, EventBridge starts a Lambda poll of the eBird feed. Raw responses land in private S3, are validated and deduplicated, then become queryable DynamoDB records. API Gateway and CloudFront keep the public experience lightweight, while Terraform defines the stack end to end.
+          </p>
+        </section>
+      </main>
+
+      <footer class="site-footer">
+        <span>BirdAlert is an independent UK bird-sighting project.</span>
+        <a href="https://github.com/adam-gatherer/BirdAlert">View the project on GitHub</a>
+      </footer>
+    </div>
 
     <script src="config.js"></script>
     <script src="app.js"></script>

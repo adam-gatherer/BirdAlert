@@ -13,19 +13,35 @@ class SiteTests(unittest.TestCase):
         self.assertIn('src="app.js"', html)
         self.assertLess(html.index('src="config.js"'), html.index('src="app.js"'))
 
-    def test_homepage_uses_a_basic_sightings_table(self):
+    def test_homepage_has_a_semantic_live_sightings_table(self):
         html = (SITE_PATH / "index.html").read_text(encoding="utf-8")
         script = (SITE_PATH / "app.js").read_text(encoding="utf-8")
 
-        self.assertIn("<table>", html)
+        self.assertIn('<section class="live-section"', html)
+        self.assertIn('<table>', html)
+        self.assertIn('<caption class="visually-hidden">', html)
         self.assertIn('<tbody id="sightings"', html)
         self.assertIn('document.createElement("tr")', script)
+        self.assertIn("validation-badge", script)
 
-    def test_styles_use_a_web_one_typographic_baseline(self):
+    def test_homepage_includes_the_data_key_overview_and_repository_footer(self):
+        html = (SITE_PATH / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn('id="data-key-title"', html)
+        self.assertIn("Validated", html)
+        self.assertIn("Provisional", html)
+        self.assertIn('id="overview-title"', html)
+        self.assertIn("EventBridge starts a Lambda poll", html)
+        self.assertIn('href="https://github.com/adam-gatherer/BirdAlert"', html)
+
+    def test_styles_support_a_responsive_accessible_presentation(self):
         styles = (SITE_PATH / "styles.css").read_text(encoding="utf-8")
 
-        self.assertIn('font-family: "Times New Roman", Times, serif', styles)
-        self.assertIn("border: 1px solid #000", styles)
+        self.assertIn("ui-sans-serif", styles)
+        self.assertIn("@media (max-width: 560px)", styles)
+        self.assertIn("@media (prefers-reduced-motion: reduce)", styles)
+        self.assertIn(":focus-visible", styles)
+        self.assertIn("data-label", styles)
 
     def test_application_fetches_once_on_page_load_without_background_polling(self):
         script = (SITE_PATH / "app.js").read_text(encoding="utf-8")
