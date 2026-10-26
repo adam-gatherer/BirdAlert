@@ -43,6 +43,7 @@ resource "aws_cloudfront_distribution" "site" {
   comment             = var.distribution_name
   default_root_object = "index.html"
   price_class         = "PriceClass_100"
+  aliases             = var.site_domain_name == null ? [] : [var.site_domain_name]
 
   origin {
     domain_name              = aws_s3_bucket.site.bucket_regional_domain_name
@@ -76,7 +77,10 @@ resource "aws_cloudfront_distribution" "site" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = true
+    acm_certificate_arn            = var.acm_certificate_arn
+    cloudfront_default_certificate = var.acm_certificate_arn == null
+    ssl_support_method             = var.acm_certificate_arn == null ? null : "sni-only"
+    minimum_protocol_version       = var.acm_certificate_arn == null ? null : "TLSv1.2_2021"
   }
 }
 

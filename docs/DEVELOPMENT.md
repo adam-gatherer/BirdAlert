@@ -42,6 +42,36 @@ For an explicitly authorised Terraform development task, review:
 
 Do not apply destructive or production changes without explicit human approval.
 
+## Production deployment
+
+Production uses the `account-b` AWS CLI profile, a state bucket in that account, and the `birdalert.gatherer.tech` Route 53 hosted zone. The root configuration deliberately uses a partial S3 backend: select its state location during `init`, rather than editing tracked Terraform files. The production backend is `terraform/backend/prod.hcl`; its state key is separate from dev.
+
+Before planning, ensure the production eBird API key is supplied through an ignored local `*.auto.tfvars` file or normal Terraform variable input. Never put it in `prod.tfvars`, a backend file, a command history, or documentation.
+
+From the repository root in PowerShell:
+
+```powershell
+$env:AWS_PROFILE = "account-b"
+python build_lambdas.py
+terraform -chdir=terraform/root init -reconfigure -backend-config="../backend/prod.hcl"
+terraform -chdir=terraform/root plan -var-file="../environments/prod.tfvars" -var-file="../environments/secrets.auto.tfvars"
+```
+
+If the S3 backend reports that it cannot find credentials despite a successful `aws login --profile account-b`, export the profile credentials into the current PowerShell process without printing them, then repeat the Terraform command:
+
+```powershell
+$credentialLines = aws configure export-credentials --profile account-b --format env-no-export
+foreach ($credentialLine in $credentialLines) {
+  if ($credentialLine -match "^([^=]+)=(.*)$") {
+    Set-Item -Path "Env:$($matches[1])" -Value $matches[2]
+  }
+}
+```
+
+Review the plan before applying. A first production plan creates the independent application stack, an ACM certificate in `us-east-1`, DNS-validation records, a CloudFront alternate domain, and Route 53 A/AAAA aliases for `birdalert.gatherer.tech`. ACM validation and CloudFront distribution deployment can take several minutes. Apply only with explicit approval, then verify the homepage, `/health`, sightings API, and processing freshness through the production domain.
+
+For dev, initialise with `-backend-config="../backend/dev.hcl"`; do not initialise dev with the production backend configuration or vice versa.
+
 When Terraform begins managing a Lambda log group that was created by an earlier deployment, import that existing log group into Terraform state before `apply`; do not delete it merely to set retention. Use the stable Terraform resource address and the `/aws/lambda/<function-name>` log-group name for the active environment.
 
 The root configuration creates log groups before their Lambda functions to prevent automatic log-group creation from racing Terraform on a fresh deployment. Existing untracked groups still require import. After a partial apply, only import groups Terraform still plans to create; already tracked groups need no further import.

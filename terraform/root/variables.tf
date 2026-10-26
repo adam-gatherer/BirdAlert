@@ -94,3 +94,17 @@ variable "alarm_email" {
   default     = null
   nullable    = true
 }
+
+variable "site_domain_name" {
+  description = "Optional public custom domain for the CloudFront site, without a trailing dot."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
+variable "route53_zone_id" {
+  description = "Route 53 public hosted-zone ID used for custom-domain records and ACM DNS validation."
+  type        = string
+  default     = null
+  nullable    = true
+}

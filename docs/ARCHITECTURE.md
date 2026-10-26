@@ -106,7 +106,7 @@ Focused tests cover poller configuration/failure/key behavior, processor handlin
 ## Known mismatches
 
 - The dev tfvars configures `GB-ENG`; deployment region values are not hard-coded in application code.
-- The root Terraform backend has a fixed dev state key despite dev and prod variable files.
+- Terraform backend settings are supplied through separate dev and production backend configuration files, so each environment uses a separate state key and account-owned state bucket.
 - The raw bucket name includes a stable Terraform-generated eight-character hexadecimal suffix to reduce global S3 naming collisions. Terraform module outputs supply the resulting name and ARN to dependent Lambda configuration, IAM policies, and S3 notification resources. The established remote-state bucket retains its existing six-character suffix because changing the backend bucket would require replacement and state migration.
 
 These are known gaps, not reasons to redesign the product. See `docs/ROADMAP.md` for milestones.

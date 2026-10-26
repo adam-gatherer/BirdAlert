@@ -37,4 +37,4 @@ The project demonstrates AWS and Terraform design decisions alongside an agent-a
 
 Application code lives in `src/`, static assets in `site/`, infrastructure in `terraform/`, and local Python tests in `tests/`. Terraform tests use mocked providers. Keep API keys, local variable files, and Terraform state out of source control.
 
-The current backend state key is fixed to dev. A production environment needs a separately reviewed backend configuration; changing the variable file alone does not isolate state. Phase 2 authentication, watchlists, and personalised notifications are not implemented.
+Terraform state is configured separately for dev and production through `terraform/backend/*.hcl`; changing the variable file alone does not select an environment. Production uses the custom domain `birdalert.gatherer.tech` when deployed with its production backend configuration. Phase 2 authentication, watchlists, and personalised notifications are not implemented.
