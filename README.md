@@ -1,40 +1,79 @@
 # BirdAlert 𓅪
-A UK-first AWS portfolio application that ingests notable eBird sightings and displays public reports on a minimal website. Terraform provisions the infrastructure. Phase 1 demonstrates ingestion, validation, storage, a read API, static hosting, and operational failure handling; personalised user alerts belong to Phase 2.
 
-Phase 1 is complete. The dev deployment and its normal ingestion path, public homepage freshness indicator, processor retry/DLQ path, CloudWatch alarms, and SNS alarm action were live-verified on 15 October 2026. See the [roadmap](docs/ROADMAP.md) for the recorded evidence and Phase 2 boundary.
 
-## How it works
+![AWS](https://img.shields.io/badge/Amazon_AWS-232F3E?style=for-the-badge&logo=amazonwebservices&logoColor=white)
+![Terraform](https://img.shields.io/badge/Terraform-844FBA?style=for-the-badge&logo=terraform&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![AWS Lambda](https://img.shields.io/badge/AWS_Lambda-FF9900?style=for-the-badge&logo=awslambda&logoColor=white)
+![Amazon S3](https://img.shields.io/badge/Amazon_S3-569A31?style=for-the-badge&logo=amazons3&logoColor=white)
+![DynamoDB](https://img.shields.io/badge/DynamoDB-4053D6?style=for-the-badge&logo=amazondynamodb&logoColor=white)
+
+
+BirdAlert collects notable bird sightings from eBird for configured UK regions and displays them on a public website. It keeps a reusable record of sightings behind a read API. The longer-term aim is to let people follow species and receive email alerts for sightings near them.
+
+I'm building it as a practical AWS and Terraform portfolio project: one useful application where I can work through ingestion, data quality, deployment, and failure handling. It also gives me a way to practise agent-assisted development while keeping ownership of the architecture and reviewing the results. The design is serverless, modular, and intended to keep running costs and maintenance low.
+
+## Current status
+
+Phase 1 is implemented: scheduled ingestion, validation and deduplication, DynamoDB storage, a public read API, a static homepage, and operational monitoring. The homepage shows the latest 10 sightings and the last successful processing time. The API supports combined region, species, and UK calendar-date filters, with bounded pagination; its health check verifies database access.
+
+The [roadmap](docs/ROADMAP.md) records deployment to **dev** and live verification on **15 October 2026**. The recorded checks cover scheduled ingestion, raw S3 storage, processor completion, homepage freshness, and a synthetic processor failure that exhausted retries, reached its dead-letter queue, raised CloudWatch alarms, and triggered a successful SNS alarm action. That SNS action is not evidence of email delivery to an inbox.
+
+Production configuration exists for `birdalert.gatherer.tech`, but the recorded dev checks do not establish a verified production deployment. Poller execution-failure, EventBridge delivery-failure, and stale-processing simulations remain future resilience drills. Authentication, watchlists, and personalised alerts are not implemented.
+
+## AWS architecture
 
 ```text
-EventBridge (every 15 minutes) -> Poll Lambda -> eBird (back=1)
-    -> private raw S3 -> Processor Lambda -> DynamoDB
-    -> API Gateway / Read Lambda -> browser
+EventBridge (every 15 minutes) -> Poll Lambda -> eBird API (back=1)
+Poll Lambda -> private raw S3 -> S3 event -> Processor Lambda -> DynamoDB
+Browser -> API Gateway -> Read Lambda -> DynamoDB
+Browser -> CloudFront -> separate private S3 site bucket
 
-CloudFront -> separate private S3 site bucket -> browser
-Failures -> separate poller/processor SQS queues
+Failed poller/processor deliveries -> separate SQS dead-letter queues
 CloudWatch problem alarms -> SNS -> optional administrator email
 ```
 
-## Decisions worth defending
+The poller reads the eBird key from Parameter Store and saves complete responses under region-based S3 prefixes. Raw responses currently have a one-day lifecycle; retention and source regions are deployment settings.
 
-- The 15-minute schedule is a polling heartbeat. First-seen ingestion captures late-submitted observations without repeatedly storing overlapping snapshots. Conditional transactions protect canonical identity; batch reads avoid repeat writes.
-- Private-location sightings are excluded from processed storage. Provisional sightings are retained and labelled honestly. Complete upstream responses stay in access-restricted raw S3 for the configured lifecycle period, currently one day.
-- DynamoDB uses on-demand billing and small indexed query records for bounded reads, avoiding table scans and a separate cache. Public API throttles reduce abuse but do not guarantee a spending cap.
-- The homepage fetches once on page load. CloudFront caches static assets from a separate private bucket through Origin Access Control; live sightings come through the API.
-- UK calendar-day queries use `Europe/London`, including daylight-saving changes. Stored timestamps use UTC. The displayed processing time is separate from when a bird was observed.
-- Transient eBird requests have three bounded retries. Poller and processor failures are retained separately for investigation and manual replay. Only operational problems raise notifications; successful heartbeats do not generate email.
-- Terraform owns log-group creation and 30-day retention. Each function can write only to its own log streams. Configuration and secret lookup use Parameter Store, and environment-specific values stay outside application code.
+The processor validates each response and stores sightings when first seen. The 15-minute schedule is a polling heartbeat, not a filter on observation time, so late-submitted reports within the upstream window can still be ingested. Batch identity checks avoid repeat writes, and conditional transactions protect against duplicates. DynamoDB keeps one canonical sighting plus small indexed query records for bounded reads without table scans or a separate cache. Processed sightings currently have no expiry.
 
-The project demonstrates AWS and Terraform design decisions alongside an agent-assisted development workflow. [Design decisions](docs/DECISIONS.md) preserves the reasoning and trade-offs; it is the detailed reference for portfolio and interview preparation.
+Private-location sightings are excluded entirely from processed storage. Well-formed unvalidated reports are retained as provisional and labelled accordingly. Complete upstream responses remain restricted to raw S3. Stored timestamps use UTC; date filters and display use `Europe/London`.
 
-## Development and operation
+The homepage fetches data once on page load. CloudFront caches static assets and accesses only the site bucket through Origin Access Control; sightings come directly through the API. DynamoDB uses on-demand billing, and configurable API throttles limit request rates without guaranteeing a spending cap.
 
-- [Bible](docs/BIBLE.md): authoritative product scope and architecture.
-- [Architecture](docs/ARCHITECTURE.md): implementation, data access patterns, and known limitations.
+Transient eBird failures receive up to three retries. Separate encrypted SQS queues retain failed deliveries for 14 days for investigation and manual replay. CloudWatch retains logs for 30 days and alarms on function errors, queued failures, sustained API errors, and 45 minutes without processing completion. SNS notifications are for operational problems; routine successful polls do not generate email.
+
+## Terraform and development
+
+Terraform is the source of truth for AWS infrastructure:
+
+- `terraform/bootstrap/` provisions the private, encrypted, versioned S3 remote-state bucket.
+- `terraform/root/` assembles the application from modules in `terraform/modules/`, including storage, Lambda, scheduling, API, static hosting, IAM, and monitoring.
+- `terraform/backend/` selects separate dev and production state locations with state locking. Changing a variable file alone does not select the environment.
+- `terraform/environments/` supplies environment settings. Production configuration includes ACM and Route 53 for the custom domain.
+
+IAM permissions are scoped to each function's work, including its own Terraform-created log group. Secrets belong in Parameter Store and local deployment inputs, never in committed configuration or logs.
+
+Python functions live in `src/`, the current static homepage in `site/`, and local tests in `tests/`. Terraform currently deploys the homepage assets as well as its infrastructure. `python build_lambdas.py` builds all three Lambda packages. See the [development guide](docs/DEVELOPMENT.md) for prerequisites, local checks, backend selection, deployment, and recovery. Local tests and mocked Terraform tests do not establish live AWS behaviour.
+
+## Planned work
+
+The next frontend step is to separate it into **BirdAlert-Frontend**, with **GitHub Actions handling frontend deployments**. This is a planned change from the Terraform-managed assets in this repository; Terraform remains responsible for AWS infrastructure.
+
+Phase 2 will add:
+
+- Cognito authentication, using email as the username.
+- Species and region watchlists.
+- A registered location and an editable alert radius in miles.
+- Matching newly processed sightings against user preferences and sending personalised email alerts through SNS.
+
+Location storage, geolocation, distance calculation, and the Cognito schema still need Phase 2 design. International coverage would also need explicit timezone and date-handling decisions. Analytics, AI product features, mobile apps, social features, and complex recommendations remain outside the agreed scope.
+
+## Project documentation
+
+- [Bible](docs/BIBLE.md): authoritative product intentions and scope.
+- [Architecture](docs/ARCHITECTURE.md): data flow, storage, and implementation details.
+- [Design decisions](docs/DECISIONS.md): the reasoning behind architectural choices.
 - [Requirements](docs/REQUIREMENTS.md): expected behaviour and security boundaries.
-- [Development guide](docs/DEVELOPMENT.md): package builds, validation, deployment, recovery, and live acceptance.
-- [Roadmap](docs/ROADMAP.md): progress and Phase 2 boundary.
-
-Application code lives in `src/`, static assets in `site/`, infrastructure in `terraform/`, and local Python tests in `tests/`. Terraform tests use mocked providers. Keep API keys, local variable files, and Terraform state out of source control.
-
-Terraform state is configured separately for dev and production through `terraform/backend/*.hcl`; changing the variable file alone does not select an environment. Production uses the custom domain `birdalert.gatherer.tech` when deployed with its production backend configuration. Phase 2 authentication, watchlists, and personalised notifications are not implemented.
+- [Development guide](docs/DEVELOPMENT.md): build, validation, deployment, and recovery procedures.
+- [Roadmap](docs/ROADMAP.md): milestones, recorded verification, and future work.
