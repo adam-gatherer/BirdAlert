@@ -76,7 +76,7 @@ For dev, initialise with `-backend-config="../backend/dev.hcl"`; do not initiali
 
 The root configuration contains `removed` blocks for the site assets and generated `config.js`, with `destroy = false`. After a reviewed and approved apply to an environment, Terraform will no longer manage those objects, but will leave them in the existing S3 bucket. The bucket, CloudFront distribution, DNS, certificates, and API remain Terraform-managed. Keep the blocks until the handoff has been applied to both dev and production state; review a separate plan for each environment and stop if it proposes deleting or replacing infrastructure.
 
-The existing `site/` files remain in this repository for now. This handoff does not configure a replacement deployment or generate `config.js` for a fresh environment; frontend deployment and environment-specific API configuration will be designed separately.
+The legacy site source is preserved in the `main` branch of BirdAlert-Frontend and is no longer in this repository. This handoff does not configure a replacement deployment or generate `config.js` for a fresh environment; frontend deployment and environment-specific API configuration will be designed separately. The current homepage must remain in place until its replacement is explicitly approved.
 
 ### Existing Lambda log groups
 

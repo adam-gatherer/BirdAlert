@@ -56,11 +56,11 @@ Terraform is the source of truth for AWS infrastructure:
 
 IAM permissions are scoped to each function's work, including its own Terraform-created log group. Secrets belong in Parameter Store and local deployment inputs, never in committed configuration or logs.
 
-Python functions live in `src/`, the current static homepage in `site/`, and local tests in `tests/`. Terraform currently deploys the homepage assets as well as its infrastructure. `python build_lambdas.py` builds all three Lambda packages. See the [development guide](docs/DEVELOPMENT.md) for prerequisites, local checks, backend selection, deployment, and recovery. Local tests and mocked Terraform tests do not establish live AWS behaviour.
+Python functions live in `src/`, and local tests in `tests/`. The legacy homepage source is preserved in the `main` branch of BirdAlert-Frontend. Terraform manages the hosting infrastructure but no longer defines the website objects. `python build_lambdas.py` builds all three Lambda packages. See the [development guide](docs/DEVELOPMENT.md) for prerequisites, local checks, backend selection, deployment, and recovery. Local tests and mocked Terraform tests do not establish live AWS behaviour.
 
 ## Planned work
 
-The next frontend step is to separate it into **BirdAlert-Frontend**, with **GitHub Actions handling frontend deployments**. This is a planned change from the Terraform-managed assets in this repository; Terraform remains responsible for AWS infrastructure.
+The Svelte application in **BirdAlert-Frontend** is the future frontend; the existing homepage remains in place until its replacement is approved. **GitHub Actions frontend deployments** and environment-specific API configuration are planned, with deployment rules still to be decided. Terraform remains responsible for AWS infrastructure.
 
 Phase 2 will add:
 

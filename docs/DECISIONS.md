@@ -48,7 +48,7 @@ Rationale: combined filters support useful app queries while a 50-result maximum
 
 ## 2026-10-14 - Static homepage delivery and page-load-only data reads
 
-Accepted and implemented locally. Plain static homepage assets live in the repository's `site/` directory. Terraform deploys them to a dedicated private S3 site bucket, and CloudFront delivers them publicly using Origin Access Control. The raw-data bucket remains separate and inaccessible to CloudFront.
+Originally implemented with plain static homepage assets in this repository and Terraform-managed uploads to a dedicated private S3 site bucket. The legacy source is now preserved in the `main` branch of BirdAlert-Frontend, and Terraform no longer defines the website objects. CloudFront continues to deliver the site using Origin Access Control. The raw-data bucket remains separate and inaccessible to CloudFront.
 
 The homepage will request `GET /sightings` once when a user opens the page. It will not poll in the background, and CloudFront will cache only static site assets rather than proxying or caching the API response. API Gateway, the read Lambda, and the bounded DynamoDB latest-sightings query remain the live data path. Terraform will configure the API CORS origin for the CloudFront site domain.
 
