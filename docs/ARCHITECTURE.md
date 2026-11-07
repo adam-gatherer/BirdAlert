@@ -2,7 +2,7 @@
 
 ## Status
 
-This document describes the intended architecture from `docs/BIBLE.md` and distinguishes it from the current repository implementation. It does not assert that AWS resources are deployed.
+This document describes the intended architecture from `docs/BIBLE.md` and distinguishes it from the current repository implementation. The production homepage remains live; dev infrastructure is decommissioned. Historical dev acceptance does not establish current AWS state or production test results.
 
 ## Product boundary
 
@@ -67,7 +67,7 @@ Cognito authenticates users; email is the username. Phase 2 retains the Bible's 
 
 ## Current implementation
 
-The active implementation covers Milestones 1 through 7 locally. Live AWS deployment remains separate from repository status.
+The backend implementation covers Milestones 1 through 7 locally. The production non-destructive Terraform handoff of website objects was applied; Terraform still manages hosting infrastructure. Live AWS state remains separate from repository status.
 
 Implemented in repository configuration/code:
 
