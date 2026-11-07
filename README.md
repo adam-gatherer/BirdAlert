@@ -23,6 +23,8 @@ Production configuration exists for `birdalert.gatherer.tech`, but the recorded 
 
 ## AWS architecture
 
+![Diagram showing components](./birdalert_diagram.gif)
+
 ```text
 EventBridge (every 15 minutes) -> Poll Lambda -> eBird API (back=1)
 Poll Lambda -> private raw S3 -> S3 event -> Processor Lambda -> DynamoDB
