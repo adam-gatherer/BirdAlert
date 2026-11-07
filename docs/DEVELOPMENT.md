@@ -72,6 +72,14 @@ Review the plan before applying. A first production plan creates the independent
 
 For dev, initialise with `-backend-config="../backend/dev.hcl"`; do not initialise dev with the production backend configuration or vice versa.
 
+### Website object handoff
+
+The root configuration contains `removed` blocks for the site assets and generated `config.js`, with `destroy = false`. After a reviewed and approved apply to an environment, Terraform will no longer manage those objects, but will leave them in the existing S3 bucket. The bucket, CloudFront distribution, DNS, certificates, and API remain Terraform-managed. Keep the blocks until the handoff has been applied to both dev and production state; review a separate plan for each environment and stop if it proposes deleting or replacing infrastructure.
+
+The existing `site/` files remain in this repository for now. This handoff does not configure a replacement deployment or generate `config.js` for a fresh environment; frontend deployment and environment-specific API configuration will be designed separately.
+
+### Existing Lambda log groups
+
 When Terraform begins managing a Lambda log group that was created by an earlier deployment, import that existing log group into Terraform state before `apply`; do not delete it merely to set retention. Use the stable Terraform resource address and the `/aws/lambda/<function-name>` log-group name for the active environment.
 
 The root configuration creates log groups before their Lambda functions to prevent automatic log-group creation from racing Terraform on a fresh deployment. Existing untracked groups still require import. After a partial apply, only import groups Terraform still plans to create; already tracked groups need no further import.
