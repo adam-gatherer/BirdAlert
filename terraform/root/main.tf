@@ -284,28 +284,22 @@ resource "aws_route53_record" "site_alias_aaaa" {
   }
 }
 
-resource "aws_s3_object" "site_asset" {
-  for_each = local.site_asset_files
+# Relinquish the existing website objects without deleting them from S3.
+# Keep these blocks until each environment's Terraform state has been updated.
+removed {
+  from = aws_s3_object.site_asset
 
-  bucket        = module.static_site.bucket_name
-  key           = each.value
-  source        = "${local.site_directory}/${each.value}"
-  etag          = filemd5("${local.site_directory}/${each.value}")
-  cache_control = "public, max-age=300"
-  content_type = lookup(
-    local.site_content_types,
-    element(reverse(split(".", each.value)), 0),
-    "application/octet-stream",
-  )
+  lifecycle {
+    destroy = false
+  }
 }
 
-resource "aws_s3_object" "site_config" {
-  bucket        = module.static_site.bucket_name
-  key           = "config.js"
-  content       = templatefile("${local.site_directory}/config.js.tftpl", { api_endpoint = module.read_api.endpoint })
-  etag          = md5(templatefile("${local.site_directory}/config.js.tftpl", { api_endpoint = module.read_api.endpoint }))
-  cache_control = "public, max-age=300"
-  content_type  = local.site_content_types.js
+removed {
+  from = aws_s3_object.site_config
+
+  lifecycle {
+    destroy = false
+  }
 }
 
 module "raw_object_processor" {
