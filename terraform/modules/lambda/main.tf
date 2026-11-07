@@ -1,4 +1,4 @@
-# creates the poller function in lambda
+# creates a Lambda function
 resource "aws_lambda_function" "poller_function" {
   function_name = var.function_name
 
@@ -9,6 +9,14 @@ resource "aws_lambda_function" "poller_function" {
   handler = var.handler
   runtime = var.runtime
 
-  timeout     = 30
-  memory_size = 256
+  timeout     = var.timeout
+  memory_size = var.memory_size
+
+  dynamic "environment" {
+    for_each = length(var.environment_variables) > 0 ? [1] : []
+
+    content {
+      variables = var.environment_variables
+    }
+  }
 }

@@ -22,3 +22,21 @@ variable "runtime" {
   description = "Lambda runtime."
   type        = string
 }
+
+variable "environment_variables" {
+  description = "Environment variables supplied to the Lambda function."
+  type        = map(string)
+  default     = {}
+}
+
+variable "timeout" {
+  description = "Lambda timeout in seconds."
+  type        = number
+  default     = 30
+}
+
+variable "memory_size" {
+  description = "Lambda memory allocation in MB."
+  type        = number
+  default     = 256
+}

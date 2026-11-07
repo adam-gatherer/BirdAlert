@@ -1,0 +1,112 @@
+# BirdAlert Architecture
+
+## Status
+
+This document describes the intended architecture from `docs/BIBLE.md` and distinguishes it from the current repository implementation. It does not assert that AWS resources are deployed.
+
+## Product boundary
+
+BirdAlert is one public web application for UK sightings, not a generic multi-tenant service. Region codes are deployment configuration: the mechanism accepts one or more valid eBird codes, but the repository must not invent the deployer's definitive region list. Development may retain `GB-ENG`.
+
+## Intended Phase 1 architecture
+
+```text
+EventBridge (15-minute heartbeat)
+    -> Poll Lambda
+    -> eBird API (previous 24 hours)
+    -> S3 raw dump (region prefix; one-day lifecycle)
+    -> validate / first-seen deduplicate
+    -> DynamoDB master database (unique sightings)
+    -> API Gateway
+    -> read Lambda queries database per request
+    -> browser / API clients
+
+CloudFront -> private S3 site bucket (Origin Access Control) -> browser
+
+EventBridge/Lambda failed deliveries -> separate private SQS DLQs
+CloudWatch high-priority alarms -> SNS topic -> optional confirmed administrator email
+```
+
+The EventBridge schedule remains a 15-minute ingestion heartbeat, but the processor does not filter by the observation time in that interval. Each 24-hour response is validated, then a well-formed non-private sighting is persisted only when BirdAlert first sees its canonical identity. This captures public reports submitted after their observation time while avoiding repeated writes from overlapping eBird responses. Store the fields the application needs, at minimum species, sighting timestamp, location, validation status, and an internal `first_seen_at` ingestion timestamp on the canonical record. Keep the complete raw response in S3 rather than copying it wholesale into DynamoDB. Reject malformed records and make processing idempotent so the master database contains only unique sightings. Retain well-formed eBird records with `obsValid: false` as `provisional`, rather than misrepresenting them as validated.
+
+The poller explicitly supplies eBird's `back=1` parameter on the initial request and every retry. This selects the upstream one-day lookback rather than relying on its default. Existing canonical sightings remain stored; changing the request window does not delete historical DynamoDB records.
+
+Reject entire records marked `locationPrivate: true` before they enter the internal model or DynamoDB. The raw response remains intact in the private S3 bucket for its configured retention; privacy exclusion applies to processed storage and the public API.
+
+The public homepage is plain static content in the repository's `site/` directory. Terraform deploys it to a dedicated private S3 site bucket; CloudFront, using Origin Access Control, is the public delivery layer and caches static assets. On each page load, the browser requests the API for the 10 most recent sightings and displays species, location, timestamp, and the time at which processing last completed successfully. API Gateway invokes a read Lambda, which queries DynamoDB when requested. No user session, cookie, authentication, persistent latest-sightings cache, or background refresh is needed for Phase 1. CloudFront does not proxy or cache the API response; the API remains the source of current data.
+
+The processor batch-reads canonical identities before creating records, so repeated 24-hour snapshots do not incur repeated transactional writes. Conditional canonical creation remains the concurrency guard. The processor writes one canonical item and four compact query items for a newly seen sighting; an already-known sighting from a new source region updates its provenance and only the two region-specific query items. The canonical item remains keyed by its sighting hash. Query items use the same table's `query-by-key` global secondary index: `LATEST`, `REGION#{region}`, `SPECIES#{species}`, and `REGION#{region}#SPECIES#{species}` are partition values, with `UTC observation timestamp#canonical sighting ID` as the descending sort key. This supports bounded queries without scans while retaining one authoritative canonical record. The exact processor trigger after the raw S3 write is intentionally unchanged.
+
+## Storage and operations
+
+Use one private S3 raw bucket with region-based prefixes and one separate private S3 site bucket. Configure lifecycle expiry for raw dumps; one day is the current configured retention, not an immutable constraint. CloudFront has access only to the site bucket through Origin Access Control. DynamoDB is the master database. Terraform provisions the infrastructure.
+
+Use least-privilege IAM, Parameter Store for secrets/configuration, encryption where appropriate, input validation, structured logging, and observable, idempotent processing. CloudWatch logs retain 30 days. The poller retries transient upstream network, `429`, and `5xx` failures three times with bounded exponential backoff; invalid data and non-transient client errors fail visibly. Exhausted poller and processor deliveries go to distinct encrypted SQS DLQs with 14-day retention for investigation and manual replay. Keep the design serverless, modular, and cost-conscious.
+
+CloudWatch alarms cover poller/processor errors, non-empty DLQs, sustained API `5xx` errors, and no processor completion for 45 minutes. They notify a dedicated SNS topic rather than users. An administrator email subscription is optional Terraform configuration and must be confirmed outside Terraform; routine successful 15-minute heartbeats do not generate notifications.
+
+## Intended API
+
+Provide `GET /sightings` and `GET /health`. `GET /sightings` provides recent sightings, species lookup, region lookup, and date retrieval through optional query parameters: `region`, `species`, `date`, `limit`, and `cursor`. Its default is the latest 10 results and its maximum page size is 50. The homepage uses this endpoint without filters and reads the database at request time. Species lookup filters sightings by eBird species code; a separate species catalogue is out of scope for Phase 1.
+
+Region/species/date filters can be combined. Region is an eBird poll source code, retained in the item's `source_regions` set, not the AWS region. The `date` parameter uses ISO 8601 `YYYY-MM-DD` and denotes a calendar day in `Europe/London`; timestamps remain stored as UTC. This preserves a UK-first product boundary while leaving regional date/time semantics for a separately designed future change.
+
+The date range uses DynamoDB's supported single sort-key `BETWEEN` condition. The next-day upper bound ends at the `UTC midnight#` prefix; real next-day keys append a non-empty sighting ID and sort after it, preserving an exclusive next-day boundary despite `BETWEEN` being inclusive. Tests cover ordinary winter/summer days and both daylight-saving transitions.
+
+The API primarily serves BirdAlert's homepage. Because it is public and unauthenticated, other clients can call it directly; browser CORS restrictions do not authenticate callers. Start with configurable API Gateway throttles of two requests per second and a burst of five for sightings, and one request per second and a burst of two for health. Bound result pages to 50 records and use opaque cursors. API Gateway throttles are best-effort targets, not hard cost caps; these conservative values can be changed through Terraform after observing demand.
+
+The health endpoint must perform a read against the master database using the read function's IAM role. A successful check verifies database access; it does not by itself prove ingestion is healthy or sightings are fresh. See [design decisions](DECISIONS.md) for the rationale and implementation status.
+
+DynamoDB stores one canonical record per unique sighting. It also stores small query records with a timestamp-based sort key for the latest, region, species, and region-plus-species access patterns. The read Lambda queries the appropriate records rather than scanning the canonical dataset and filtering in memory. Query records carry only fields needed for that access pattern and never duplicate raw payloads. The processor uses DynamoDB transactions: it conditionally creates the canonical record and query records, or, on an existing canonical record, adds its source region and writes the applicable query records. A separate fixed-key operational-status item records `last_successful_processing_at` after a raw object completes processing; it is not a sighting or query record.
+
+`GET /sightings` returns JSON with `sightings`, a nullable opaque `next_cursor`, and nullable `last_successful_processing_at`. The latter is written only after a processor invocation has successfully handled a raw object, so it reports end-to-end data freshness rather than browser load time or poll start time. Each sighting exposes its stable canonical ID, species code/names, UTC `observed_at`, `validation_status`, location ID/name/coordinates, and optional count. Invalid parameters return `400`; unknown routes return `404`; unavailable DynamoDB access returns `503`. `/health` returns `200` with database reachability when a lightweight DynamoDB read succeeds, otherwise `503`. These fields deliberately exclude submissions, source-region provenance, privacy flags, and raw upstream data.
+
+## Phase 2 architecture
+
+Cognito authenticates users; email is the username. Phase 2 retains the Bible's species/region watchlists and adds user data for registered location and an updatable radius in miles. Newly processed sightings are compared with the user's location and radius; matching sightings may trigger SNS email. Leave location representation, geolocation, distance calculation, and detailed Cognito schema to Phase 2 design. Phase 2 is not part of the Phase 1 deployment.
+
+## Current implementation
+
+The active implementation covers Milestones 1 through 7 locally. Live AWS deployment remains separate from repository status.
+
+Implemented in repository configuration/code:
+
+- Poll Lambda calling eBird and writing raw JSON to S3.
+- Configurable comma-separated region codes and SSM parameter name supplied to Lambda by Terraform.
+- Region-based, collision-resistant raw S3 object keys and visible per-region poll failures.
+- EventBridge invokes the poller every 15 minutes, with scoped Lambda permission.
+- Raw S3 objects and non-current versions expire after the configured one-day retention period.
+- SSM Parameter Store lookup and Terraform modules for Lambda, IAM, parameter, and S3.
+- Terraform bootstrap code for a remote-state bucket.
+- Raw bucket versioning, encryption, and public-access blocking.
+- S3-triggered processor Lambda with a raw-bucket read-only IAM role.
+- A 180-second processor timeout so an initial first-seen backfill can complete without altering the low-cost serverless design; normal invocations are billed only for their actual duration.
+- First-seen processing of validated 24-hour snapshots, minute- and second-precision timestamp parsing, and transformation into the internal sighting model.
+- Processor completion logs include aggregate validation-rejection reason counts only; they do not log rejected records or raw sighting data.
+- Focused tests for first-seen processing, invalid records, daylight-saving edge cases, S3-event handling, and repeat-write avoidance.
+- DynamoDB master table with on-demand billing, server-side encryption, and point-in-time recovery.
+- Batch identity checks and conditional transactional writes that make repeated deliveries idempotent and deduplicate by a SHA-256 hash of eBird submission ID and species code; canonical items retain their first ingestion timestamp.
+- Source regions retained as provenance without participating in the sighting identity.
+- Entire private-location sightings excluded before persistence, with a second guard at the DynamoDB write boundary; raw payloads remain in private S3.
+- Well-formed `obsValid: false` records retained with a `provisional` validation status exposed through the read API.
+- A DynamoDB global secondary index and minimal timestamp-sorted query records for latest, region, species, and combined lookups.
+- Public HTTP API Gateway routes for `GET /sightings` and `GET /health`, a database-reading Lambda, opaque cursor pagination, validated UK-calendar date filtering, and Terraform-configured route throttles.
+- Focused tests for read queries, date conversion, cursor validation, health connectivity, and API errors.
+- Plain static homepage assets under `site/`, fetching the latest sightings once on page load and showing provisional reports honestly.
+- A fixed-key DynamoDB operational-status item written after successful processing, exposed by the read API, and rendered by the homepage as a UK-formatted data-freshness timestamp.
+- Three bounded retries for transient eBird network, `429`, and `5xx` failures, with structured retry logs that exclude credentials and raw data.
+- Separate SQS-managed-encrypted 14-day poller and processor DLQs. EventBridge routes exhausted poller deliveries to the poller DLQ; Lambda asynchronous failure destinations also route exhausted poller executions to that queue and exhausted processor executions to the processor DLQ. Both execution roles have `sqs:SendMessage` scoped to their own queue. Each Lambda permits two additional asynchronous execution attempts within a one-hour event age; these are separate from the three in-code eBird request retries.
+- The poller timeout is five minutes per configured source region, capped at Lambda's fifteen-minute maximum, allowing time for four eBird request attempts, backoff, and AWS calls. It is an execution ceiling; successful invocations are billed for their actual duration. Larger region sets require reviewing the retry budget because of the cap.
+- Managed 30-day Lambda log retention, a processor-completion log metric, and CloudWatch alarms for Lambda errors, DLQ messages, sustained API `5xx` errors, and 45-minute processing staleness. Alarm actions publish to an SNS topic with an optional administrator email subscription.
+- Terraform creates log groups before functions. Each execution role has only `logs:CreateLogStream` and `logs:PutLogEvents` for streams within that function's own group; it cannot create groups or write another function's logs.
+- A separate private S3 site bucket, CloudFront distribution with Origin Access Control and HTTPS redirect, exact CloudFront-origin CORS, and Terraform-managed asset/config deployment. CloudFront uses the UK-suitable `PriceClass_100` and a five-minute static-asset cache lifetime.
+
+Focused tests cover poller configuration/failure/key behavior, processor handling, persistence, deduplication, private-location exclusion, and the read API.
+
+## Known mismatches
+
+- The dev tfvars configures `GB-ENG`; deployment region values are not hard-coded in application code.
+- Terraform backend settings are supplied through separate dev and production backend configuration files, so each environment uses a separate state key and account-owned state bucket.
+- The raw bucket name includes a stable Terraform-generated eight-character hexadecimal suffix to reduce global S3 naming collisions. Terraform module outputs supply the resulting name and ARN to dependent Lambda configuration, IAM policies, and S3 notification resources. The established remote-state bucket retains its existing six-character suffix because changing the backend bucket would require replacement and state migration.
+
+These are known gaps, not reasons to redesign the product. See `docs/ROADMAP.md` for milestones.

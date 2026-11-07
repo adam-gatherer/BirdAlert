@@ -1,0 +1,52 @@
+data "aws_iam_policy_document" "lambda_assume_role" {
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["lambda.amazonaws.com"]
+    }
+
+    actions = ["sts:AssumeRole"]
+  }
+}
+
+data "aws_iam_policy_document" "lambda_logging" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogStream",
+      "logs:PutLogEvents",
+    ]
+    resources = ["${trimsuffix(var.log_group_arn, ":*")}:log-stream:*"]
+  }
+}
+
+data "aws_iam_policy_document" "raw_bucket_read" {
+  statement {
+    effect    = "Allow"
+    actions   = ["s3:GetObject"]
+    resources = ["${var.bucket_arn}/*"]
+  }
+}
+
+data "aws_iam_policy_document" "sightings_write" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "dynamodb:BatchGetItem",
+      "dynamodb:PutItem",
+      "dynamodb:TransactWriteItems",
+      "dynamodb:UpdateItem",
+    ]
+    resources = [var.sightings_table_arn]
+  }
+}
+
+data "aws_iam_policy_document" "processor_dlq" {
+  statement {
+    effect    = "Allow"
+    actions   = ["sqs:SendMessage"]
+    resources = [var.processor_dlq_arn]
+  }
+}
