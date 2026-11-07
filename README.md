@@ -17,9 +17,9 @@ I'm building it as a practical AWS and Terraform portfolio project: one useful a
 
 Phase 1 is implemented: scheduled ingestion, validation and deduplication, DynamoDB storage, a public read API, a static homepage, and operational monitoring. The homepage shows the latest 10 sightings and the last successful processing time. The API supports combined region, species, and UK calendar-date filters, with bounded pagination; its health check verifies database access.
 
-The [roadmap](docs/ROADMAP.md) records deployment to **dev** and live verification on **15 October 2026**. The recorded checks cover scheduled ingestion, raw S3 storage, processor completion, homepage freshness, and a synthetic processor failure that exhausted retries, reached its dead-letter queue, raised CloudWatch alarms, and triggered a successful SNS alarm action. That SNS action is not evidence of email delivery to an inbox.
+The [roadmap](docs/ROADMAP.md) records the earlier **dev** deployment and live verification on **15 October 2026**. Dev infrastructure is now decommissioned. The recorded checks cover scheduled ingestion, raw S3 storage, processor completion, homepage freshness, and a synthetic processor failure that exhausted retries, reached its dead-letter queue, raised CloudWatch alarms, and triggered a successful SNS alarm action. That SNS action is not evidence of email delivery to an inbox.
 
-Production configuration exists for `birdalert.gatherer.tech`, but the recorded dev checks do not establish a verified production deployment. Poller execution-failure, EventBridge delivery-failure, and stale-processing simulations remain future resilience drills. Authentication, watchlists, and personalised alerts are not implemented.
+The existing production homepage remains live at `birdalert.gatherer.tech`. The non-destructive handoff of its website S3 objects has been applied in production; Terraform continues to manage the hosting infrastructure. The recorded dev checks do not establish production test results. Poller execution-failure, EventBridge delivery-failure, and stale-processing simulations remain future resilience drills. Authentication, watchlists, and personalised alerts are not implemented.
 
 ## AWS architecture
 
@@ -56,11 +56,11 @@ Terraform is the source of truth for AWS infrastructure:
 
 IAM permissions are scoped to each function's work, including its own Terraform-created log group. Secrets belong in Parameter Store and local deployment inputs, never in committed configuration or logs.
 
-Python functions live in `src/`, and local tests in `tests/`. The legacy homepage source is preserved in the `main` branch of BirdAlert-Frontend. Terraform manages the hosting infrastructure but no longer defines the website objects. `python build_lambdas.py` builds all three Lambda packages. See the [development guide](docs/DEVELOPMENT.md) for prerequisites, local checks, backend selection, deployment, and recovery. Local tests and mocked Terraform tests do not establish live AWS behaviour.
+This repository owns the Python Lambda and API code in `src/`, local tests in `tests/`, and AWS infrastructure. Frontend source, including the legacy homepage, is in `BirdAlert-Frontend/main`. Terraform manages the hosting infrastructure but no longer defines the website objects. `python build_lambdas.py` builds all three Lambda packages. See the [development guide](docs/DEVELOPMENT.md) for prerequisites, local checks, backend selection, deployment, and recovery. Local tests and mocked Terraform tests do not establish live AWS behaviour.
 
 ## Planned work
 
-The Svelte application in **BirdAlert-Frontend** is the future frontend; the existing homepage remains in place until its replacement is approved. **GitHub Actions frontend deployments** and environment-specific API configuration are planned, with deployment rules still to be decided. Terraform remains responsible for AWS infrastructure.
+The Svelte application in **BirdAlert-Frontend** is the future frontend; the existing homepage remains in place until its replacement is approved. The frontend's `main` branch has `.github/workflows/frontend-ci.yml`, a manually triggered pipeline with sequential placeholder Test, Build, and Deploy jobs that print messages only. It does not run tests, build, upload, or deploy. Real frontend deployment, environment-specific API configuration, and deployment rules remain to be designed. Any future production deployment requires explicit approval.
 
 Phase 2 will add:
 

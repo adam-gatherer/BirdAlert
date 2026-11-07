@@ -6,6 +6,15 @@ BirdAlert is a production-inspired, event-driven AWS platform for ingesting nota
 
 This file defines how an AI coding agent should work in this repository.
 
+## Repository boundaries and current status
+
+- BirdAlert contains the Python Lambdas, API and Terraform-managed AWS infrastructure. Frontend source, including the preserved legacy homepage, belongs in `BirdAlert-Frontend/main`; the Svelte application there is the future frontend.
+- Read applicable instructions and inspect the current state in each repository before working across them. Change only repositories authorised for the task and preserve the frontend maintainer's work.
+- The production homepage remains live and must not be replaced without explicit human approval. The non-destructive production Terraform handoff of website objects has been applied; Terraform continues to manage hosting infrastructure, not the site objects.
+- Development infrastructure is currently decommissioned. Do not assume dev resources exist or recreate them without the required approval.
+- `BirdAlert-Frontend/main` contains `.github/workflows/frontend-ci.yml`, a manually triggered dummy Test -> Build -> Deploy workflow. Its jobs print messages only; it does not test, build, upload, or deploy the frontend. Check the current workflow before relying on its status.
+- Future production deployments require explicit human approval. Do not infer deployment authority from a merge or from the existence of a workflow.
+
 ## Source of truth
 
 Use these sources in this order:

@@ -68,15 +68,15 @@ foreach ($credentialLine in $credentialLines) {
 }
 ```
 
-Review the plan before applying. A first production plan creates the independent application stack, an ACM certificate in `us-east-1`, DNS-validation records, a CloudFront alternate domain, and Route 53 A/AAAA aliases for `birdalert.gatherer.tech`. ACM validation and CloudFront distribution deployment can take several minutes. Apply only with explicit approval, then verify the homepage, `/health`, sightings API, and processing freshness through the production domain.
+Review the plan before applying. An initial production plan for a new environment would create the application stack, an ACM certificate in `us-east-1`, DNS-validation records, a CloudFront alternate domain, and Route 53 A/AAAA aliases for `birdalert.gatherer.tech`. The production homepage is already live; do not assume a new stack is needed. ACM validation and CloudFront distribution deployment can take several minutes. Apply only with explicit approval, then verify the homepage, `/health`, sightings API, and processing freshness through the production domain.
 
-For dev, initialise with `-backend-config="../backend/dev.hcl"`; do not initialise dev with the production backend configuration or vice versa.
+Development infrastructure is currently decommissioned. For an authorised future dev operation, initialise with `-backend-config="../backend/dev.hcl"`; do not initialise dev with the production backend configuration or vice versa. Do not recreate dev resources without the required approval.
 
 ### Website object handoff
 
-The root configuration contains `removed` blocks for the site assets and generated `config.js`, with `destroy = false`. After a reviewed and approved apply to an environment, Terraform will no longer manage those objects, but will leave them in the existing S3 bucket. The bucket, CloudFront distribution, DNS, certificates, and API remain Terraform-managed. Keep the blocks until the handoff has been applied to both dev and production state; review a separate plan for each environment and stop if it proposes deleting or replacing infrastructure.
+The root configuration contains `removed` blocks for the site assets and generated `config.js`, with `destroy = false`. The non-destructive handoff was applied in production: Terraform no longer manages those objects, which remain in the existing S3 bucket. The bucket, CloudFront distribution, DNS, certificates, and API remain Terraform-managed. Dev infrastructure is decommissioned; do not assume its state or recreate resources. Review the applicable state and plan separately before any future change to these blocks or an environment.
 
-The legacy site source is preserved in the `main` branch of BirdAlert-Frontend and is no longer in this repository. This handoff does not configure a replacement deployment or generate `config.js` for a fresh environment; frontend deployment and environment-specific API configuration will be designed separately. The current homepage must remain in place until its replacement is explicitly approved.
+The legacy site source is preserved in `BirdAlert-Frontend/main` and is no longer in this repository. The Svelte application is the future frontend. The frontend's `.github/workflows/frontend-ci.yml` on `main` is a manually triggered dummy workflow with sequential Test -> Build -> Deploy jobs that print messages only; it runs no real tests, build, upload or deployment. This handoff does not configure a replacement deployment or generate `config.js` for a fresh environment; frontend deployment and environment-specific API configuration will be designed separately. The current production homepage must remain in place until its replacement is explicitly approved, and any future production deployment requires explicit approval.
 
 ### Existing Lambda log groups
 
@@ -84,7 +84,7 @@ When Terraform begins managing a Lambda log group that was created by an earlier
 
 The root configuration creates log groups before their Lambda functions to prevent automatic log-group creation from racing Terraform on a fresh deployment. Existing untracked groups still require import. After a partial apply, only import groups Terraform still plans to create; already tracked groups need no further import.
 
-For the existing dev read log group, run these commands from `terraform/root` in Windows PowerShell. `--%` preserves the quoted resource key for Terraform, and the variable file supplies the deployment configuration:
+The following commands are a historical example for the former dev read log group, not an instruction to import or recreate it now. If a future environment has an existing untracked log group, first review its state and plan. `--%` preserves the quoted resource key for Terraform, and the variable file supplies the deployment configuration:
 
 ```powershell
 terraform --% import -var-file="../environments/dev.tfvars" aws_cloudwatch_log_group.lambda[\"read\"] "/aws/lambda/birdalert-dev-read"
@@ -95,7 +95,7 @@ The import must report success. Review the plan before applying; the imported lo
 
 Do not claim that AWS deployment succeeded unless it has actually been performed and verified.
 
-For the Milestone 7 poller retry-budget and failure-destination correction, review a new dev plan and apply it through the usual workflow. It should update the poller timeout and add its queue-scoped IAM policy/attachment and Lambda asynchronous invocation configuration; it should reuse the existing poller DLQ. No Lambda package rebuild is needed for this Terraform-only correction. Live failure-destination delivery and alarm behaviour still require verification after deployment. An EventBridge delivery failure and a Lambda execution failure use different message envelopes; inspect the envelope and replay its original event manually after resolving the cause.
+The Milestone 7 poller retry-budget and failure-destination correction was deployed to the former dev environment. Its historical plan updated the poller timeout and added a queue-scoped IAM policy/attachment and Lambda asynchronous invocation configuration using the existing poller DLQ. An EventBridge delivery failure and a Lambda execution failure use different message envelopes; inspect the envelope and replay its original event manually after resolving the cause. Dev is now decommissioned.
 
 Run `terraform -chdir=terraform/root test` from the repository root to check poller failure-destination wiring and timeout budgets using mocked providers and isolated test state. These tests do not contact AWS or deploy resources. They still require the providers and existing Lambda package files to be available locally.
 
